@@ -216,16 +216,28 @@ def run_pipeline(repository_url):
         prediction_result = analyze_system(
 
             metrics={
-
-                "runtime":
-                    runtime_metrics,
-
-
-                "load":
-                    load_results
-
+            
+                "load_test": {
+                    "user_levels": user_levels,
+                    "throughput": throughput,
+                },
+        
+                "runtime": {
+                    **runtime_metrics,
+        
+                    "current_users": current_users,
+        
+                    "throughput": current_throughput,
+                },
+        
+                "queue": {
+                    "arrival_rate": arrival_rate,
+                    "service_rate": service_rate,
+                    "service_rate_source": service_rate_source,
+                }
+        
             }
-
+        
         )
 
 

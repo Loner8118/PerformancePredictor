@@ -1,0 +1,4623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal — Performance Prediction Engine</title>
+<meta name="description" content="Deploy, load-test, and mathematically predict the high-load behavior of a web application from a small experimental sample.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<div class="shell" id="shell">
+
+  <!-- ============================================================ -->
+  <!-- SIDEBAR RAIL                                                   -->
+  <!-- ============================================================ -->
+  <aside class="rail" id="rail">
+    <div class="rail__brand">
+      <span class="rail__mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M2 13h4l2.5-7L13 20l2.5-9H22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="rail__brand-text">Signal</span>
+    </div>
+
+    <nav class="rail__nav" aria-label="Sections">
+      <p class="rail__group-label">Run</p>
+      <ul class="rail__list">
+        <li><a href="#overview" class="rail__link is-active" data-nav="overview"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M3 10h3l2-6 4 12 2-6h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Overview</span></a></li>
+        <li><a href="#repository" class="rail__link" data-nav="repository"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M4 3h8l4 4v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 3v4h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>Repository</span></a></li>
+        <li><a href="#deployment" class="rail__link" data-nav="deployment"><svg viewBox="0 0 20 20" width="16" height="16"><rect x="3" y="6" width="14" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 6V4.5A1.5 1.5 0 0 1 8.5 3h3A1.5 1.5 0 0 1 13 4.5V6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Deployment</span></a></li>
+        <li><a href="#routes" class="rail__link" data-nav="routes"><svg viewBox="0 0 20 20" width="16" height="16"><circle cx="5" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="15" cy="15" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 5h4a4 4 0 0 1 4 4v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Routes</span></a></li>
+        <li><a href="#load-testing" class="rail__link" data-nav="load-testing"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 15l4-4 3 3 5-7 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Load Testing</span></a></li>
+        <li><a href="#runtime" class="rail__link" data-nav="runtime"><svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v4l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Runtime Metrics</span></a></li>
+      </ul>
+
+      <p class="rail__group-label">Predict</p>
+      <ul class="rail__list">
+        <li><a href="#usl" class="rail__link" data-nav="usl"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 17c4-1 5-11 8-11s3 7 8 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Scalability (USL)</span></a></li>
+        <li><a href="#littles-law" class="rail__link" data-nav="littles-law"><svg viewBox="0 0 20 20" width="16" height="16"><text x="3" y="14" font-size="11" fill="currentColor" font-family="serif" font-style="italic">L=λW</text></svg><span>Little's Law</span></a></li>
+        <li><a href="#queueing" class="rail__link" data-nav="queueing"><svg viewBox="0 0 20 20" width="16" height="16"><rect x="2" y="8" width="3" height="3" fill="currentColor"/><rect x="6" y="8" width="3" height="3" fill="currentColor"/><rect x="10" y="8" width="3" height="3" fill="currentColor" opacity=".4"/><path d="M15 6v8" stroke="currentColor" stroke-width="1.6"/></svg><span>Queueing Theory</span></a></li>
+        <li><a href="#bottleneck" class="rail__link" data-nav="bottleneck"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 10h5l2-6 2 12 2-6h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="10" r="1.4" fill="currentColor"/></svg><span>Bottleneck</span></a></li>
+        <li><a href="#capacity" class="rail__link" data-nav="capacity"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M3 17V9M9 17V3M15 17v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Capacity Planning</span></a></li>
+        <li><a href="#scalability" class="rail__link" data-nav="scalability"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 17 8 9l3 3 6-8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.2 2.2"/></svg><span>Future Load</span></a></li>
+        <li><a href="#recommendations" class="rail__link" data-nav="recommendations"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M10 2l2 5 5 .5-3.8 3.4 1.1 5.1-4.3-2.6-4.3 2.6 1.1-5.1L3 7.5 8 7Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Recommendations</span></a></li>
+      </ul>
+
+      <p class="rail__group-label">Tools</p>
+      <ul class="rail__list">
+        <li><a href="#playground" class="rail__link" data-nav="playground"><svg viewBox="0 0 20 20" width="16" height="16"><rect x="3" y="3" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 7h6M7 10h6M7 13h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Model Playground</span></a></li>
+        <li><a href="#report" class="rail__link" data-nav="report"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M5 2h7l3 3v13H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9h4M8 12h4M8 15h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Report</span></a></li>
+      </ul>
+    </nav>
+
+    <div class="rail__footer">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme">
+        <svg class="theme-toggle__icon theme-toggle__icon--dark" viewBox="0 0 20 20" width="15" height="15"><path d="M17 11.5A7 7 0 0 1 8.5 3 7 7 0 1 0 17 11.5Z" fill="currentColor"/></svg>
+        <svg class="theme-toggle__icon theme-toggle__icon--light" viewBox="0 0 20 20" width="15" height="15"><circle cx="10" cy="10" r="3.4" fill="currentColor"/><path d="M10 2v2M10 16v2M18 10h-2M4 10H2M15.5 4.5l-1.4 1.4M5.9 14.1l-1.4 1.4M15.5 15.5l-1.4-1.4M5.9 5.9 4.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span id="themeToggleLabel">Dark</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============================================================ -->
+  <!-- MAIN                                                           -->
+  <!-- ============================================================ -->
+  <div class="main">
+
+    <header class="topbar">
+      <button class="topbar__menu" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="topbar__title">
+        <h1 id="topbarHeading">Overview</h1>
+        <p id="topbarSubheading">Deploy, load-test, and predict — from one small experiment.</p>
+      </div>
+      <div class="run-status" id="runStatus" data-state="idle">
+        <span class="run-status__dot" aria-hidden="true"></span>
+        <span class="run-status__text" id="runStatusText">Idle</span>
+      </div>
+    </header>
+
+    <!-- ============================================================ -->
+    <!-- PIPELINE TRACK — sticky signal-chain progress rail             -->
+    <!-- ============================================================ -->
+    <div class="pipeline-track" id="pipelineTrack" role="status" aria-label="Pipeline progress">
+      <ol class="pipeline-track__list" id="pipelineTrackList">
+        <li class="ptrack__node" data-stage="clone" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">1</span></span><span class="ptrack__label">Clone</span></li>
+        <li class="ptrack__node" data-stage="detect" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">2</span></span><span class="ptrack__label">Detect</span></li>
+        <li class="ptrack__node" data-stage="entry" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">3</span></span><span class="ptrack__label">Entry point</span></li>
+        <li class="ptrack__node" data-stage="validate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">4</span></span><span class="ptrack__label">Validate</span></li>
+        <li class="ptrack__node" data-stage="build" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">5</span></span><span class="ptrack__label">Build</span></li>
+        <li class="ptrack__node" data-stage="run" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">6</span></span><span class="ptrack__label">Run</span></li>
+        <li class="ptrack__node" data-stage="health" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">7</span></span><span class="ptrack__label">Health</span></li>
+        <li class="ptrack__node" data-stage="routes" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">8</span></span><span class="ptrack__label">Routes</span></li>
+        <li class="ptrack__node" data-stage="generate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">9</span></span><span class="ptrack__label">Generate</span></li>
+        <li class="ptrack__node" data-stage="loadtest" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">10</span></span><span class="ptrack__label">Load test</span></li>
+      </ol>
+      <div class="pipeline-track__progress" id="pipelineTrackProgress" aria-hidden="true"></div>
+    </div>
+
+    <main class="content" id="main-content">
+
+      <!-- ========================================================== -->
+      <!-- OVERVIEW                                                     -->
+      <!-- ========================================================== -->
+      <section id="overview" class="view is-active" data-view="overview">
+
+        <div class="hero">
+          <div class="hero__eyebrow-free">
+            <h2 class="hero__title">Test 500 users.<br>Predict 5,000.</h2>
+            <p class="hero__lede">
+              Signal runs a small, cheap load test against your application, then fits the
+              Universal Scalability Law, Little's Law, and queueing theory to what it measured —
+              extrapolating throughput, response time, and breaking point far beyond what was
+              actually tested.
+            </p>
+          </div>
+          <div class="hero__legend">
+            <div class="legend-chip"><span class="legend-swatch legend-swatch--measured"></span>Measured</div>
+            <div class="legend-chip"><span class="legend-swatch legend-swatch--predicted"></span>Predicted</div>
+          </div>
+        </div>
+
+        <div class="panel start-panel">
+          <div class="panel__head">
+            <h3>Start a run</h3>
+            <p>Point Signal at a public GitHub repository. Nothing is written back to it.</p>
+          </div>
+
+          <form class="start-form" id="repoForm" novalidate>
+            <div class="field">
+              <label for="githubUrl" class="field__label">Repository URL</label>
+              <div class="field__input-row">
+                <input
+                  type="url"
+                  id="githubUrl"
+                  name="githubUrl"
+                  class="field__input field__input--mono"
+                  placeholder="https://github.com/owner/repository"
+                  autocomplete="off"
+                  required
+                >
+                <button type="submit" class="btn btn--primary" id="analyzeBtn">
+                  <span class="btn__label">Run analysis</span>
+                  <svg class="btn__spinner" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="30 100" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+              <p class="field__help">Framework support: Flask, FastAPI, Django, Express.js, Spring Boot.</p>
+            </div>
+
+            <div class="field-row">
+              <div class="field field--compact">
+                <label for="branchInput" class="field__label">Branch <span class="field__label-optional">(optional)</span></label>
+                <input type="text" id="branchInput" name="branch" class="field__input field__input--mono" placeholder="main">
+              </div>
+            </div>
+          </form>
+
+          <div class="run-log" id="overviewLog" hidden aria-live="polite"></div>
+        </div>
+
+        <div class="stat-strip" id="overviewStats">
+          <div class="stat-card">
+            <span class="stat-card__label">Safe capacity</span>
+            <span class="stat-card__value" id="stat-safe-users">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Breaking point</span>
+            <span class="stat-card__value" id="stat-breaking-point">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Peak throughput (USL)</span>
+            <span class="stat-card__value" id="stat-peak-throughput">—</span>
+            <span class="stat-card__unit">req/s</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Bottleneck</span>
+            <span class="stat-card__value stat-card__value--text" id="stat-bottleneck">—</span>
+            <span class="stat-card__unit">limiting resource</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ==========================================================
+          REPOSITORY
+          ========================================================== -->
+      <section id="repository" class="view" data-view="repository">
+      
+        <div class="view__head repository-head">
+          <div>
+            <div class="eyebrow">ANALYSIS WORKSPACE</div>
+            <h2>Repository Analysis</h2>
+            <p>
+              Repository discovery, framework detection, entry-point resolution,
+              and validation status for the current analysis run.
+            </p>
+          </div>
+        
+          <div class="repository-head__actions">
+            <span class="badge badge--neutral" id="repoStateBadge">
+              Not started
+            </span>
+          
+            <button
+              class="btn btn--ghost btn--sm"
+              id="refreshReposBtn"
+              type="button"
+            >
+              <span class="btn-icon">↻</span>
+              Refresh
+            </button>
+          </div>
+        </div>
+      
+      
+        <!-- ========================================================
+            PIPELINE STATUS
+            ======================================================== -->
+      
+        <div class="repo-pipeline panel">
+        
+          <div class="repo-pipeline__top">
+            <div>
+              <span class="section-label">Repository readiness</span>
+              <h3 id="repoReadinessTitle">Waiting for repository analysis</h3>
+              <p id="repoReadinessText">
+                Clone a repository to begin automated analysis.
+              </p>
+            </div>
+          
+            <div class="repo-readiness-score" id="repoReadinessScore">
+              <strong>—</strong>
+              <span>READY</span>
+            </div>
+          </div>
+        
+          <div class="repo-pipeline__steps">
+          
+            <div class="repo-step" id="repoStepClone">
+              <div class="repo-step__icon">01</div>
+              <div class="repo-step__content">
+                <strong>Repository</strong>
+                <span id="repoStepCloneText">Waiting</span>
+              </div>
+            </div>
+          
+            <div class="repo-step__connector"></div>
+          
+            <div class="repo-step" id="repoStepFramework">
+              <div class="repo-step__icon">02</div>
+              <div class="repo-step__content">
+                <strong>Framework</strong>
+                <span id="repoStepFrameworkText">Waiting</span>
+              </div>
+            </div>
+          
+            <div class="repo-step__connector"></div>
+          
+            <div class="repo-step" id="repoStepEntry">
+              <div class="repo-step__icon">03</div>
+              <div class="repo-step__content">
+                <strong>Entry Point</strong>
+                <span id="repoStepEntryText">Waiting</span>
+              </div>
+            </div>
+          
+            <div class="repo-step__connector"></div>
+          
+            <div class="repo-step" id="repoStepValidation">
+              <div class="repo-step__icon">04</div>
+              <div class="repo-step__content">
+                <strong>Validation</strong>
+                <span id="repoStepValidationText">Waiting</span>
+              </div>
+            </div>
+          
+          </div>
+        </div>
+      
+      
+        <!-- ========================================================
+            CURRENT REPOSITORY
+            ======================================================== -->
+      
+        <div class="repo-grid repo-grid--top">
+        
+          <div class="panel repo-identity-panel">
+          
+            <div class="panel__head panel__head--row">
+              <div>
+                <span class="section-label">SOURCE</span>
+                <h3>Current repository</h3>
+                <p>Repository currently being analyzed.</p>
+              </div>
+            
+              <span class="repo-status-dot">
+                <span></span>
+                Active
+              </span>
+            </div>
+          
+            <div class="repo-project-card">
+            
+              <div class="repo-project-icon" id="repoProjectIcon">
+                GH
+              </div>
+            
+              <div class="repo-project-info">
+                <strong id="repo-project-name">—</strong>
+                <span id="repo-url" class="mono repo-url">
+                  —
+                </span>
+              </div>
+            
+            </div>
+          
+            <div class="repo-meta-grid">
+            
+              <div class="repo-meta-item">
+                <span>Branch</span>
+                <strong id="repo-branch">default</strong>
+              </div>
+            
+              <div class="repo-meta-item">
+                <span>Workspace</span>
+                <strong id="repo-path" class="mono">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        
+          <!-- ======================================================
+              FRAMEWORK DETECTION
+              ====================================================== -->
+        
+          <div class="panel repo-framework-panel">
+          
+            <div class="panel__head panel__head--row">
+            
+              <div>
+                <span class="section-label">DETECTION</span>
+                <h3>Framework detection</h3>
+                <p>
+                  Framework identified from repository signals.
+                </p>
+              </div>
+            
+              <span
+                class="badge badge--neutral"
+                id="frameworkConfidenceBadge"
+              >
+                Pending
+              </span>
+            
+            </div>
+          
+            <div class="framework-result">
+            
+              <div class="framework-logo" id="frameworkLogo">
+                ?
+              </div>
+            
+              <div class="framework-result__main">
+                <span>Detected framework</span>
+                <strong id="fw-detected">
+                  Not detected
+                </strong>
+              </div>
+            
+              <div class="framework-result__confidence">
+                <span>Confidence</span>
+                <strong id="fw-confidence-value">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+            <div class="framework-meta">
+            
+              <div>
+                <span>Support tier</span>
+                <strong id="fw-tier">—</strong>
+              </div>
+            
+              <div>
+                <span>Ambiguous</span>
+                <strong id="fw-ambiguous">—</strong>
+              </div>
+            
+              <div>
+                <span>Entry point</span>
+                <strong id="fw-entry-point" class="mono">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ========================================================
+            DETECTION SIGNALS / ENTRY POINT
+            ======================================================== -->
+      
+        <div class="repo-grid repo-grid--analysis">
+        
+          <div class="panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <span class="section-label">EVIDENCE</span>
+                <h3>Detection signals</h3>
+                <p>
+                  Evidence used by the framework detector.
+                </p>
+              </div>
+            
+            </div>
+          
+            <div
+              class="signal-list"
+              id="frameworkSignals"
+            >
+              <div class="signal-empty">
+                Framework analysis has not been performed yet.
+              </div>
+            </div>
+          
+          </div>
+        
+        
+          <div class="panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <span class="section-label">STARTUP</span>
+                <h3>Entry-point resolution</h3>
+                <p>
+                  How the application will be started.
+                </p>
+              </div>
+            
+            </div>
+          
+            <div class="entry-point-card">
+            
+              <div class="entry-point-card__row">
+                <span>Entry file</span>
+                <strong id="entry-file" class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="entry-point-card__row">
+                <span>Directory</span>
+                <strong id="entry-directory" class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="entry-point-card__row">
+                <span>Module</span>
+                <strong id="entry-module" class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="entry-point-card__row">
+                <span>Application variable</span>
+                <strong id="entry-app-variable" class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="entry-point-card__row entry-point-card__row--command">
+                <span>Run command</span>
+                <code id="entry-run-command">
+                  —
+                </code>
+              </div>
+            
+            </div>
+          
+            <div class="entry-point-footer">
+            
+              <span>
+                Resolution
+              </span>
+            
+              <span
+                class="badge badge--neutral"
+                id="entryConfidenceBadge"
+              >
+                Pending
+              </span>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ========================================================
+            VALIDATION
+            ======================================================== -->
+      
+        <div class="panel repo-validation-panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <span class="section-label">FINAL GATE</span>
+              <h3>Repository validation</h3>
+              <p>
+                Blocking errors and advisory warnings before Dockerization.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--neutral"
+              id="validationBadge"
+            >
+              Pending
+            </span>
+          
+          </div>
+        
+        
+          <div class="validation-summary">
+          
+            <div class="validation-summary__item validation-summary__item--error">
+            
+              <div class="validation-summary__icon">
+                !
+              </div>
+            
+              <div>
+                <span>Blocking errors</span>
+                <strong id="validationErrorCount">0</strong>
+              </div>
+            
+            </div>
+          
+          
+            <div class="validation-summary__item validation-summary__item--warning">
+            
+              <div class="validation-summary__icon">
+                !
+              </div>
+            
+              <div>
+                <span>Warnings</span>
+                <strong id="validationWarningCount">0</strong>
+              </div>
+            
+            </div>
+          
+          
+            <div class="validation-summary__item validation-summary__item--status">
+            
+              <div class="validation-summary__icon">
+                ✓
+              </div>
+            
+              <div>
+                <span>Pipeline status</span>
+                <strong id="validationPipelineStatus">
+                  Pending
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        
+          <div class="issue-columns">
+          
+            <div class="issue-column">
+            
+              <div class="issue-column__heading">
+                <h4 class="issue-column__title issue-column__title--error">
+                  Blocking errors
+                </h4>
+              
+                <span id="validationErrorCountLabel">
+                  0
+                </span>
+              </div>
+            
+              <ul
+                class="issue-list issue-list--error"
+                id="validationErrors"
+              >
+                <li class="issue-list__empty">
+                  No validation run yet.
+                </li>
+              </ul>
+            
+            </div>
+          
+          
+            <div class="issue-column">
+            
+              <div class="issue-column__heading">
+                <h4 class="issue-column__title issue-column__title--warning">
+                  Advisory warnings
+                </h4>
+              
+                <span id="validationWarningCountLabel">
+                  0
+                </span>
+              </div>
+            
+              <ul
+                class="issue-list issue-list--warning"
+                id="validationWarnings"
+              >
+                <li class="issue-list__empty">
+                  No validation run yet.
+                </li>
+              </ul>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ========================================================
+            WORKSPACE REPOSITORIES
+            ======================================================== -->
+      
+        <div class="panel workspace-repositories-panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <span class="section-label">WORKSPACE</span>
+              <h3>Cloned repositories</h3>
+              <p>
+                Repositories currently available in the analysis workspace.
+              </p>
+            </div>
+          
+            <div class="workspace-count">
+              <strong id="repoCount">0</strong>
+              <span>repositories</span>
+            </div>
+          
+          </div>
+        
+        
+          <div class="table-wrap">
+          
+            <table class="data-table repo-table" id="repoTable">
+            
+              <thead>
+                <tr>
+                  <th>Repository</th>
+                  <th>Workspace path</th>
+                  <th>Size</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+            
+              <tbody id="repoTableBody">
+              
+                <tr>
+                  <td colspan="5" class="data-table__empty">
+                    No repositories cloned yet.
+                  </td>
+                </tr>
+              
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- DEPLOYMENT (Docker build / run / health check)               -->
+      <!-- ========================================================== -->
+      <section id="deployment" class="view" data-view="deployment">
+        <div class="view__head">
+          <h2>Deployment</h2>
+          <p>Container build, start, and readiness verification.</p>
+        </div>
+
+        <div class="deploy-stages">
+
+          <div class="panel deploy-stage" data-deploy-stage="build">
+            <div class="deploy-stage__head">
+              <span class="deploy-stage__icon" aria-hidden="true">01</span>
+              <div>
+                <h3>Docker build</h3>
+                <p>Builds an image for the detected framework — auto-generating a Dockerfile if none exists.</p>
+              </div>
+              <span class="badge badge--neutral" id="buildBadge">Pending</span>
+            </div>
+            <div class="kv-grid kv-grid--tight">
+              <div class="kv-grid__item"><span>Image name</span><strong id="build-image-name" class="mono">—</strong></div>
+              <div class="kv-grid__item"><span>Container port</span><strong id="build-container-port" class="mono">—</strong></div>
+            </div>
+          </div>
+
+          <div class="panel deploy-stage" data-deploy-stage="run">
+            <div class="deploy-stage__head">
+              <span class="deploy-stage__icon" aria-hidden="true">02</span>
+              <div>
+                <h3>Container start</h3>
+                <p>Starts the built image and allocates a host port dynamically.</p>
+              </div>
+              <span class="badge badge--neutral" id="runBadge">Pending</span>
+            </div>
+            <div class="kv-grid kv-grid--tight">
+              <div class="kv-grid__item"><span>Container ID</span><strong id="run-container-id" class="mono">—</strong></div>
+              <div class="kv-grid__item"><span>Host</span><strong id="run-host" class="mono">—</strong></div>
+              <div class="kv-grid__item"><span>Host port</span><strong id="run-port" class="mono">—</strong></div>
+            </div>
+          </div>
+
+          <div class="panel deploy-stage" data-deploy-stage="health">
+            <div class="deploy-stage__head">
+              <span class="deploy-stage__icon" aria-hidden="true">03</span>
+              <div>
+                <h3>Health check</h3>
+                <p>Polls the container until it responds, or reports a crash with logs attached.</p>
+              </div>
+              <span class="badge badge--neutral" id="healthBadge">Pending</span>
+            </div>
+
+            <div class="health-wait" id="healthWait" hidden>
+              <div class="health-wait__pulse" aria-hidden="true"></div>
+              <div class="health-wait__text">
+                <span id="healthWaitText">Waiting for container to respond…</span>
+                <span class="health-wait__meta"><span id="healthWaitElapsed">0.0s</span> elapsed · attempt <span id="healthWaitAttempts">0</span></span>
+              </div>
+            </div>
+
+            <div class="kv-grid kv-grid--tight" id="healthResult" hidden>
+              <div class="kv-grid__item"><span>Status code</span><strong id="health-status-code" class="mono">—</strong></div>
+              <div class="kv-grid__item"><span>Elapsed</span><strong id="health-elapsed" class="mono">—</strong></div>
+              <div class="kv-grid__item"><span>Attempts</span><strong id="health-attempts" class="mono">—</strong></div>
+            </div>
+
+            <div class="crash-panel" id="crashPanel" hidden>
+              <h4>Container exited before becoming ready</h4>
+              <p id="crashReason" class="mono"></p>
+              <pre class="log-block" id="crashLogs"></pre>
+              <button class="btn btn--secondary btn--sm" id="retryHealthBtn" type="button">Retry container start</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- ROUTES                                                       -->
+      <!-- ========================================================== -->
+      <section id="routes" class="view" data-view="routes">
+        <div class="view__head">
+          <h2>Routes</h2>
+          <p>Endpoints discovered on the running container, used to generate the load-test workload.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head panel__head--row">
+            <div>
+              <h3>Discovered endpoints</h3>
+              <p id="routesCount">No routes discovered yet.</p>
+            </div>
+            <div class="method-filter" id="methodFilter" role="group" aria-label="Filter by HTTP method">
+              <button type="button" class="method-filter__btn is-active" data-method="all">All</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="routesTable">
+              <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
+              <tbody id="routesTableBody">
+                <tr><td colspan="3" class="data-table__empty">Run route discovery to populate this list.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head panel__head--row">
+            <div>
+              <h3>Locust configuration</h3>
+              <p>Auto-generated workload from the routes above.</p>
+            </div>
+            <span class="badge badge--neutral" id="locustBadge">Pending</span>
+          </div>
+          <pre class="log-block" id="locustSummary">No configuration generated yet.</pre>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- LOAD TESTING                                                 -->
+      <!-- ========================================================== -->
+      <section id="load-testing" class="view" data-view="load-testing">
+        <div class="view__head">
+          <h2>Load Testing</h2>
+          <p>Executes the generated workload across increasing concurrency levels.</p>
+        </div>
+
+        <div class="panel">
+          <div class="load-progress" id="loadProgress">
+            <div class="load-progress__head">
+              <span id="loadProgressText">Waiting to start</span>
+              <span class="mono" id="loadProgressCount">0 / 6 levels</span>
+            </div>
+            <div class="load-progress__levels" id="loadProgressLevels"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">
+            <h3>Throughput &amp; response time by level</h3>
+            <p>Each tested concurrency level, as measured by Locust.</p>
+          </div>
+          <div class="chart-frame"><canvas id="loadTestChart" height="110"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>Per-level results</h3></div>
+          <div class="table-wrap">
+            <table class="data-table data-table--numeric" id="loadTable">
+              <thead>
+                <tr><th>Users</th><th>Throughput (req/s)</th><th>Avg RT (ms)</th><th>CPU %</th><th>Memory %</th><th>Error rate</th></tr>
+              </thead>
+              <tbody id="loadTableBody">
+                <tr><td colspan="6" class="data-table__empty">No load test has been run yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- RUNTIME METRICS                                              -->
+      <!-- ========================================================== -->
+      <section id="runtime" class="view" data-view="runtime">
+        <div class="view__head">
+          <h2>Runtime Metrics</h2>
+          <p>Container-level resource pressure observed during the load test.</p>
+        </div>
+
+        <div class="metric-grid">
+          <div class="panel">
+            <h3 class="chart-title">CPU &amp; Memory</h3>
+            <div class="chart-frame"><canvas id="cpuMemChart" height="130"></canvas></div>
+          </div>
+          <div class="panel">
+            <h3 class="chart-title">Disk I/O</h3>
+            <div class="chart-frame"><canvas id="diskChart" height="130"></canvas></div>
+          </div>
+          <div class="panel">
+            <h3 class="chart-title">Network I/O</h3>
+            <div class="chart-frame"><canvas id="networkChart" height="130"></canvas></div>
+          </div>
+          <div class="panel">
+            <h3 class="chart-title">Error rate</h3>
+            <div class="chart-frame"><canvas id="errorChart" height="130"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- USL — UNIVERSAL SCALABILITY LAW                            -->
+      <!-- ========================================================== -->
+      <section id="usl" class="view" data-view="usl">
+      
+        <!-- Header -->
+        <div class="view__head">
+          <div>
+            <h2>Scalability — Universal Scalability Law</h2>
+            <p>
+              Fits contention (σ) and coherency (κ) to the measured throughput
+              curve, then estimates scalability beyond the tested load range.
+            </p>
+          </div>
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- MODEL STATUS                                             -->
+        <!-- ======================================================== -->
+      
+        <div class="panel usl-status-panel">
+        
+          <div class="panel__head panel__head--row">
+            <div>
+              <h3>USL model assessment</h3>
+              <p>
+                Summary of model fit quality, tested range and extrapolation reliability.
+              </p>
+            </div>
+          
+            <div class="usl-status-badges">
+              <span class="badge badge--neutral" id="uslFitStatus">
+                Fit unavailable
+              </span>
+            
+              <span class="badge badge--neutral" id="uslReliabilityBadge">
+                Reliability unavailable
+              </span>
+            </div>
+          </div>
+        
+          <div class="usl-status-grid">
+          
+            <div class="usl-status-item">
+              <span class="usl-status-item__label">Tested range</span>
+              <strong class="usl-status-item__value mono" id="usl-tested-range">
+                —
+              </strong>
+              <span class="usl-status-item__hint">
+                concurrent users
+              </span>
+            </div>
+          
+            <div class="usl-status-item">
+              <span class="usl-status-item__label">Observations</span>
+              <strong class="usl-status-item__value mono" id="usl-observations">
+                —
+              </strong>
+              <span class="usl-status-item__hint">
+                load levels used for fitting
+              </span>
+            </div>
+          
+            <div class="usl-status-item">
+              <span class="usl-status-item__label">Peak inside tested range</span>
+              <strong class="usl-status-item__value" id="usl-peak-range">
+                —
+              </strong>
+              <span class="usl-status-item__hint">
+                affects confidence in N*
+              </span>
+            </div>
+          
+            <div class="usl-status-item">
+              <span class="usl-status-item__label">Extrapolated points</span>
+              <strong class="usl-status-item__value mono" id="usl-extrapolated-count">
+                —
+              </strong>
+              <span class="usl-status-item__hint">
+                beyond measured range
+              </span>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- MAIN USL CURVE                                           -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>USL scalability curve</h3>
+              <p>
+                Measured throughput compared with the fitted USL model and
+                future extrapolations.
+              </p>
+            </div>
+          
+            <div class="chart-legend">
+            
+              <span class="legend-chip">
+                <span class="legend-swatch legend-swatch--measured"></span>
+                Measured
+              </span>
+            
+              <span class="legend-chip">
+                <span class="legend-swatch legend-swatch--predicted"></span>
+                USL fitted / predicted
+              </span>
+            
+              <span class="legend-chip">
+                <span class="legend-swatch legend-swatch--warning"></span>
+                95% confidence range
+              </span>
+            
+            </div>
+          
+          </div>
+        
+          <div class="chart-frame chart-frame--tall">
+            <canvas id="uslChart"></canvas>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- CORE USL METRICS                                         -->
+        <!-- ======================================================== -->
+      
+        <div class="param-row">
+        
+          <div class="param-card">
+            <span class="param-card__label">σ · Contention</span>
+            <span class="param-card__value mono" id="usl-sigma">—</span>
+          </div>
+        
+          <div class="param-card">
+            <span class="param-card__label">κ · Coherency</span>
+            <span class="param-card__value mono" id="usl-kappa">—</span>
+          </div>
+        
+          <div class="param-card">
+            <span class="param-card__label">Baseline throughput</span>
+            <span class="param-card__value mono" id="usl-baseline">—</span>
+            <span class="param-card__hint">req/s</span>
+          </div>
+        
+          <div class="param-card">
+            <span class="param-card__label">Peak throughput</span>
+            <span class="param-card__value mono" id="usl-peak">—</span>
+            <span class="param-card__hint">req/s</span>
+          </div>
+        
+          <div class="param-card">
+            <span class="param-card__label">Optimal users N*</span>
+            <span class="param-card__value mono" id="usl-optimal">—</span>
+          </div>
+        
+          <div class="param-card">
+            <span class="param-card__label">Saturation point</span>
+            <span class="param-card__value mono" id="usl-saturation">—</span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- FIT QUALITY + CLASSIFICATION                             -->
+        <!-- ======================================================== -->
+      
+        <div class="usl-analysis-grid">
+        
+          <!-- Fit quality -->
+          <div class="panel usl-quality-panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <h3>Model fit quality</h3>
+                <p>
+                  How closely the fitted USL curve explains the measured throughput.
+                </p>
+              </div>
+            
+              <span class="badge badge--neutral" id="uslFitStatusSecondary">
+                —
+              </span>
+            
+            </div>
+          
+            <div class="fit-metrics">
+            
+              <div class="fit-metric">
+                <span>R²</span>
+                <strong id="usl-r2">—</strong>
+                <small>in-sample fit</small>
+              </div>
+            
+              <div class="fit-metric">
+                <span>RMSE</span>
+                <strong id="usl-rmse">—</strong>
+                <small>req/s</small>
+              </div>
+            
+              <div class="fit-metric">
+                <span>LOO R²</span>
+                <strong id="usl-loo-r2">—</strong>
+                <small>cross-validation</small>
+              </div>
+            
+            </div>
+          
+            <div class="usl-fit-summary">
+              <span>Fit interpretation</span>
+              <strong id="usl-fit-summary">
+                No fit assessment available.
+              </strong>
+            </div>
+          
+          </div>
+        
+        
+          <!-- Classification -->
+          <div class="panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <h3>Scalability classification</h3>
+                <p>
+                  Shape of the fitted throughput curve based on σ and κ.
+                </p>
+              </div>
+            
+            </div>
+          
+            <div class="classification-box">
+            
+              <span
+                class="badge badge--neutral"
+                id="uslClassification">
+                —
+              </span>
+            
+              <p id="uslClassificationDescription">
+                No classification available.
+              </p>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- PARAMETER INTERPRETATION                                 -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>Parameter interpretation</h3>
+              <p>
+                What the fitted USL parameters represent in the application.
+              </p>
+            </div>
+          
+          </div>
+        
+          <div class="interpretation-grid">
+          
+            <div class="interpretation-card">
+            
+              <div class="interpretation-card__symbol">
+                σ
+              </div>
+            
+              <div>
+                <strong>Contention overhead</strong>
+              
+                <p id="uslSigmaInterpretation">
+                  —
+                </p>
+              </div>
+            
+            </div>
+          
+          
+            <div class="interpretation-card">
+            
+              <div class="interpretation-card__symbol">
+                κ
+              </div>
+            
+              <div>
+                <strong>Coherency overhead</strong>
+              
+                <p id="uslKappaInterpretation">
+                  —
+                </p>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- PARAMETER UNCERTAINTY                                    -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>Parameter uncertainty</h3>
+              <p>
+                Standard errors indicate how strongly the current measurements
+                identify the fitted USL parameters.
+              </p>
+            </div>
+          
+          </div>
+        
+          <div class="fit-metrics">
+          
+            <div class="fit-metric">
+              <span>σ standard error</span>
+              <strong class="mono" id="usl-sigma-stderr">—</strong>
+            </div>
+          
+            <div class="fit-metric">
+              <span>κ standard error</span>
+              <strong class="mono" id="usl-kappa-stderr">—</strong>
+            </div>
+          
+            <div class="fit-metric">
+              <span>κ relative uncertainty</span>
+              <strong class="mono" id="usl-kappa-relative-uncertainty">—</strong>
+            </div>
+          
+          </div>
+        
+          <div class="usl-note" id="uslUncertaintyNote">
+            Parameter uncertainty assessment is not available.
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- OBSERVED VS PREDICTED                                    -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Observed vs USL model</h3>
+              <p>
+                Comparison between measured throughput and the fitted USL curve
+                at every tested load level.
+              </p>
+            </div>
+          
+            <span class="badge badge--neutral" id="uslResidualBadge">
+              —
+            </span>
+          
+          </div>
+        
+          <div class="table-wrap">
+          
+            <table class="data-table data-table--numeric">
+            
+              <thead>
+                <tr>
+                  <th>Users</th>
+                  <th>Observed throughput</th>
+                  <th>USL predicted</th>
+                  <th>Residual</th>
+                  <th>Deviation</th>
+                </tr>
+              </thead>
+            
+              <tbody id="uslObservedTableBody">
+              
+                <tr>
+                  <td colspan="5" class="data-table__empty">
+                    Run the pipeline to see model fit.
+                  </td>
+                </tr>
+              
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- FUTURE PREDICTIONS                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Predictions at untested load</h3>
+              <p>
+                Model-based throughput estimates beyond the highest tested
+                concurrency level.
+              </p>
+            </div>
+          
+            <span class="badge badge--warning" id="uslPredictionStatus">
+              Extrapolated
+            </span>
+          
+          </div>
+        
+          <div class="table-wrap">
+          
+            <table
+              class="data-table data-table--numeric"
+              id="uslPredictionTable">
+
+              <thead>
+              
+                <tr>
+                  <th>Users</th>
+                  <th>Predicted throughput</th>
+                  <th>Efficiency</th>
+                  <th>95% confidence interval</th>
+                  <th>Prediction status</th>
+                </tr>
+              
+              </thead>
+            
+              <tbody id="uslPredictionTableBody">
+              
+                <tr>
+                  <td colspan="5" class="data-table__empty">
+                    Run the pipeline to see predictions.
+                  </td>
+                </tr>
+              
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- EXTRAPOLATION WARNING                                    -->
+        <!-- ======================================================== -->
+      
+        <div
+          class="panel usl-warning-panel"
+          id="uslExtrapolationPanel"
+          hidden>
+
+          <div class="usl-warning">
+          
+            <div class="usl-warning__icon">
+              !
+            </div>
+          
+            <div>
+            
+              <h3>Extrapolation warning</h3>
+            
+              <p id="uslExtrapolationWarning">
+                Predictions beyond the tested range are model-based estimates
+                and should be interpreted with caution.
+              </p>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- USL MODEL SUMMARY                                        -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>USL interpretation summary</h3>
+              <p>
+                A concise interpretation of the mathematical model results.
+              </p>
+            </div>
+          
+          </div>
+        
+          <div class="usl-summary-grid">
+          
+            <div class="usl-summary-item">
+              <span class="usl-summary-item__label">
+                Scaling behavior
+              </span>
+              <strong id="uslSummaryClassification">
+                —
+              </strong>
+            </div>
+          
+            <div class="usl-summary-item">
+              <span class="usl-summary-item__label">
+                Theoretical optimum
+              </span>
+              <strong id="uslSummaryOptimal">
+                —
+              </strong>
+            </div>
+          
+            <div class="usl-summary-item">
+              <span class="usl-summary-item__label">
+                Peak throughput
+              </span>
+              <strong id="uslSummaryPeak">
+                —
+              </strong>
+            </div>
+          
+            <div class="usl-summary-item">
+              <span class="usl-summary-item__label">
+                Extrapolation confidence
+              </span>
+              <strong id="uslSummaryReliability">
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- LITTLE'S LAW                                               -->
+      <!-- ========================================================== -->
+      <section id="littles-law" class="view" data-view="littles-law">
+      
+        <!-- Header -->
+        <div class="view__head">
+          <div>
+            <h2>Little's Law</h2>
+            <p class="formula">
+              L = λ × W — average requests in the system equals arrival rate
+              multiplied by average response time.
+            </p>
+          </div>
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- MODEL OVERVIEW                                           -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Workload analysis</h3>
+              <p>
+                Little's Law relates request arrival rate, response time,
+                and the average number of requests occupying the system.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--neutral"
+              id="littleLawOverallStatus">
+              —
+            </span>
+          
+          </div>
+        
+        
+          <div class="usl-status-grid">
+          
+            <div class="usl-status-item">
+            
+              <span class="usl-status-item__label">
+                Peak arrival rate
+              </span>
+            
+              <strong
+                class="usl-status-item__value mono"
+                id="littleLawPeakArrival">
+                —
+              </strong>
+            
+              <span class="usl-status-item__hint">
+                req/s
+              </span>
+            
+            </div>
+          
+          
+            <div class="usl-status-item">
+            
+              <span class="usl-status-item__label">
+                Peak response time
+              </span>
+            
+              <strong
+                class="usl-status-item__value mono"
+                id="littleLawPeakResponse">
+                —
+              </strong>
+            
+              <span class="usl-status-item__hint">
+                seconds
+              </span>
+            
+            </div>
+          
+          
+            <div class="usl-status-item">
+            
+              <span class="usl-status-item__label">
+                Peak system occupancy
+              </span>
+            
+              <strong
+                class="usl-status-item__value mono"
+                id="littleLawPeakOccupancy">
+                —
+              </strong>
+            
+              <span class="usl-status-item__hint">
+                concurrent requests
+              </span>
+            
+            </div>
+          
+          
+            <div class="usl-status-item">
+            
+              <span class="usl-status-item__label">
+                Highest tested load
+              </span>
+            
+              <strong
+                class="usl-status-item__value mono"
+                id="littleLawHighestUsers">
+                —
+              </strong>
+            
+              <span class="usl-status-item__hint">
+                users
+              </span>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- L CHART                                                  -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Requests in system vs load</h3>
+            
+              <p>
+                Average number of requests present in the system at each
+                tested concurrency level.
+              </p>
+            </div>
+          
+            <div class="chart-legend">
+            
+              <span class="legend-chip">
+                <span class="legend-swatch legend-swatch--measured"></span>
+                Requests in system
+              </span>
+            
+            </div>
+          
+          </div>
+        
+          <div class="chart-frame chart-frame--tall">
+            <canvas id="littlesLawChart"></canvas>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- CORE METRICS                                             -->
+        <!-- ======================================================== -->
+      
+        <div class="param-row">
+        
+          <div class="param-card">
+          
+            <span class="param-card__label">
+              Peak λ
+            </span>
+          
+            <span
+              class="param-card__value mono"
+              id="littleLawLambda">
+              —
+            </span>
+          
+            <span class="param-card__hint">
+              req/s
+            </span>
+          
+          </div>
+        
+        
+          <div class="param-card">
+          
+            <span class="param-card__label">
+              Peak W
+            </span>
+          
+            <span
+              class="param-card__value mono"
+              id="littleLawW">
+              —
+            </span>
+          
+            <span class="param-card__hint">
+              seconds
+            </span>
+          
+          </div>
+        
+        
+          <div class="param-card">
+          
+            <span class="param-card__label">
+              Peak L
+            </span>
+          
+            <span
+              class="param-card__value mono"
+              id="littleLawL">
+              —
+            </span>
+          
+            <span class="param-card__hint">
+              requests
+            </span>
+          
+          </div>
+        
+        
+          <div class="param-card">
+          
+            <span class="param-card__label">
+              Highest load
+            </span>
+          
+            <span
+              class="param-card__value mono"
+              id="littleLawUsers">
+              —
+            </span>
+          
+            <span class="param-card__hint">
+              users
+            </span>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- WORKLOAD TREND ANALYSIS                                  -->
+        <!-- ======================================================== -->
+      
+        <div class="usl-analysis-grid">
+        
+          <!-- Occupancy -->
+          <div class="panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <h3>System occupancy</h3>
+              
+                <p>
+                  Tracks how the average number of active requests changes
+                  as concurrency increases.
+                </p>
+              </div>
+            
+            </div>
+          
+            <div class="classification-box">
+            
+              <span
+                class="badge badge--neutral"
+                id="littleLawOccupancyTrend">
+                —
+              </span>
+            
+              <p id="littleLawOccupancyDescription">
+                No occupancy trend available.
+              </p>
+            
+            </div>
+          
+          </div>
+        
+        
+          <!-- Response time -->
+          <div class="panel">
+          
+            <div class="panel__head">
+            
+              <div>
+                <h3>Response-time trend</h3>
+              
+                <p>
+                  Indicates whether request latency is increasing or decreasing
+                  as system load changes.
+                </p>
+              </div>
+            
+            </div>
+          
+            <div class="classification-box">
+            
+              <span
+                class="badge badge--neutral"
+                id="littleLawResponseTrend">
+                —
+              </span>
+            
+              <p id="littleLawResponseDescription">
+                No response-time trend available.
+              </p>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- ARRIVAL RATE TREND                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>Arrival-rate behavior</h3>
+            
+              <p>
+                Shows how request throughput changes as concurrent users increase.
+              </p>
+            </div>
+          
+          </div>
+        
+          <div class="classification-box">
+          
+            <span
+              class="badge badge--neutral"
+              id="littleLawArrivalTrend">
+              —
+            </span>
+          
+            <p id="littleLawArrivalDescription">
+              No arrival-rate trend available.
+            </p>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- LOAD-LEVEL TABLE                                         -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Little's Law by load level</h3>
+            
+              <p>
+                L = λ × W calculated independently for every tested
+                concurrency level.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--neutral"
+              id="littleLawTableStatus">
+              —
+            </span>
+          
+          </div>
+        
+        
+          <div class="table-wrap">
+          
+            <table
+              class="data-table data-table--numeric"
+              id="littlesLawTable">
+
+              <thead>
+              
+                <tr>
+                  <th>Users</th>
+                  <th>λ · Arrival rate</th>
+                  <th>W · Response time</th>
+                  <th>L · Requests in system</th>
+                  <th>Classification</th>
+                  <th>Occupancy trend</th>
+                </tr>
+              
+              </thead>
+            
+              <tbody id="littlesLawTableBody">
+              
+                <tr>
+                  <td
+                    colspan="6"
+                    class="data-table__empty">
+                    Run the pipeline to see results.
+                  </td>
+                </tr>
+              
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- FORMULA EXPLANATION                                      -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>Little's Law interpretation</h3>
+            
+              <p>
+                How the measured workload relates to system occupancy.
+              </p>
+            </div>
+          
+          </div>
+        
+        
+          <div class="interpretation-grid">
+          
+            <div class="interpretation-card">
+            
+              <div class="interpretation-card__symbol">
+                L
+              </div>
+            
+              <div>
+              
+                <strong>
+                  Requests in system
+                </strong>
+              
+                <p id="littleLawLInterpretation">
+                  —
+                </p>
+              
+              </div>
+            
+            </div>
+          
+          
+            <div class="interpretation-card">
+            
+              <div class="interpretation-card__symbol">
+                λ
+              </div>
+            
+              <div>
+              
+                <strong>
+                  Arrival rate
+                </strong>
+              
+                <p id="littleLawLambdaInterpretation">
+                  —
+                </p>
+              
+              </div>
+            
+            </div>
+          
+          
+            <div class="interpretation-card">
+            
+              <div class="interpretation-card__symbol">
+                W
+              </div>
+            
+              <div>
+              
+                <strong>
+                  Response time
+                </strong>
+              
+                <p id="littleLawWInterpretation">
+                  —
+                </p>
+              
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- SYSTEM SIGNALS                                           -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <h3>System signals</h3>
+            
+              <p>
+                Indicators derived from workload occupancy and trend behavior.
+              </p>
+            </div>
+          
+          </div>
+        
+        
+          <div class="fit-metrics">
+          
+            <div class="fit-metric">
+            
+              <span>
+                High occupancy
+              </span>
+            
+              <strong id="littleLawHighOccupancy">
+                —
+              </strong>
+            
+            </div>
+          
+          
+            <div class="fit-metric">
+            
+              <span>
+                Critical occupancy
+              </span>
+            
+              <strong id="littleLawCriticalOccupancy">
+                —
+              </strong>
+            
+            </div>
+          
+          
+            <div class="fit-metric">
+            
+              <span>
+                Maximum L
+              </span>
+            
+              <strong
+                class="mono"
+                id="littleLawMaxL">
+                —
+              </strong>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+      
+      <!-- ========================================================== -->
+      <!-- QUEUEING THEORY                                           -->
+      <!-- ========================================================== -->
+      <section id="queueing" class="view" data-view="queueing">
+      
+        <div class="view__head">
+          <h2>Queueing Theory</h2>
+          <p class="formula">
+            M/M/1 — utilization ρ = λ / μ. As ρ approaches 1,
+            the system approaches saturation.
+          </p>
+        </div>
+      
+        <!-- Model Overview -->
+        <div class="kv-grid">
+        
+          <div class="kv-grid__item">
+            <span>Queueing model</span>
+            <strong id="queue-model" class="mono">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Service rate (μ)</span>
+            <strong id="queue-service-rate" class="mono">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Service time</span>
+            <strong id="queue-service-time" class="mono">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Servers</span>
+            <strong id="queue-server-count" class="mono">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Service rate source</span>
+            <strong id="queue-service-source" class="mono">—</strong>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Utilization Chart -->
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>System Utilization</h3>
+              <p class="muted">
+                Measured utilization compared with predicted utilization
+                using USL throughput.
+              </p>
+            </div>
+          </div>
+        
+          <div class="chart-frame">
+            <canvas id="utilizationChart" height="110"></canvas>
+          </div>
+        
+          <div class="chart-legend">
+            <span class="legend-chip">
+              <span class="legend-swatch legend-swatch--measured"></span>
+              Measured ρ
+            </span>
+          
+            <span class="legend-chip">
+              <span class="legend-swatch legend-swatch--predicted"></span>
+              Predicted ρ
+            </span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Queueing Summary -->
+        <div class="metric-grid">
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Peak utilization</span>
+            <strong id="queue-peak-utilization" class="metric-card__value mono">—</strong>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Maximum queue length</span>
+            <strong id="queue-max-length" class="metric-card__value mono">—</strong>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Maximum wait time</span>
+            <strong id="queue-max-wait" class="metric-card__value mono">—</strong>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Maximum system time</span>
+            <strong id="queue-max-system-time" class="metric-card__value mono">—</strong>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Queueing Table -->
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Workload Analysis</h3>
+              <p class="muted">
+                Queueing behavior at each measured load level.
+              </p>
+            </div>
+          </div>
+        
+          <div class="table-wrap">
+          
+            <table class="data-table data-table--numeric" id="queueingTable">
+            
+              <thead>
+                <tr>
+                  <th>Users</th>
+                  <th>λ (req/s)</th>
+                  <th>ρ</th>
+                  <th>Queue length</th>
+                  <th>Wait time</th>
+                  <th>System time</th>
+                  <th>Stability</th>
+                  <th>Congestion</th>
+                </tr>
+              </thead>
+            
+              <tbody id="queueingTableBody">
+                <tr>
+                  <td colspan="8" class="data-table__empty">
+                    Run the pipeline to see results.
+                  </td>
+                </tr>
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- Predicted Queueing -->
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Predicted Queueing Behavior</h3>
+              <p class="muted">
+                Queue utilization extrapolated from USL-predicted throughput.
+              </p>
+            </div>
+          </div>
+        
+          <div class="table-wrap">
+          
+            <table class="data-table data-table--numeric">
+            
+              <thead>
+                <tr>
+                  <th>Predicted Users</th>
+                  <th>λ (req/s)</th>
+                  <th>ρ</th>
+                  <th>Stability</th>
+                </tr>
+              </thead>
+            
+              <tbody id="queueingPredictedTableBody">
+                <tr>
+                  <td colspan="4" class="data-table__empty">
+                    No predictions available.
+                  </td>
+                </tr>
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- Interpretation -->
+        <div class="kv-grid">
+        
+          <div class="kv-grid__item">
+            <span>Current queue status</span>
+            <strong id="queue-current-status">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Congestion risk</span>
+            <strong id="queue-congestion-risk">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Idle probability</span>
+            <strong id="queue-idle-probability" class="mono">—</strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Offered load</span>
+            <strong id="queue-offered-load" class="mono">—</strong>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Signals -->
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Queueing Signals</h3>
+              <p class="muted">
+                Indicators generated by the queueing model.
+              </p>
+            </div>
+          </div>
+        
+          <div class="kv-grid">
+          
+            <div class="kv-grid__item">
+              <span>High utilization</span>
+              <strong id="queue-signal-utilization">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Near saturation</span>
+              <strong id="queue-signal-saturation">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Unstable system</span>
+              <strong id="queue-signal-unstable">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>High wait time</span>
+              <strong id="queue-signal-wait">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Long queue</span>
+              <strong id="queue-signal-queue">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Congestion detected</span>
+              <strong id="queue-signal-congestion">—</strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- BOTTLENECK ANALYSIS                                      -->
+      <!-- ========================================================== -->
+      <section id="bottleneck" class="view" data-view="bottleneck">
+      
+        <div class="view__head">
+          <h2>Bottleneck Analysis</h2>
+          <p>
+            Utilization Law and asymptotic analysis identify the monitored
+            resource most likely to limit system throughput.
+          </p>
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- PRIMARY BOTTLENECK                                    -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Primary Bottleneck</h3>
+              <p class="muted">
+                Resource with the highest service demand per request.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--accent"
+              id="bottleneckPrimaryBadge">
+              —
+            </span>
+          
+          </div>
+        
+          <div class="bottleneck-primary">
+          
+            <div class="bottleneck-primary__resource">
+              <span class="bottleneck-primary__label">
+                Limiting monitored resource
+              </span>
+            
+              <strong
+                id="bottleneckPrimaryResource"
+                class="bottleneck-primary__value">
+                —
+              </strong>
+            </div>
+          
+            <div class="bottleneck-primary__metric">
+              <span>Service demand</span>
+              <strong id="bottleneckPrimaryDemand" class="mono">
+                —
+              </strong>
+            </div>
+          
+            <div class="bottleneck-primary__metric">
+              <span>Severity</span>
+              <strong id="bottleneckSeverity">
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- RESOURCE UTILIZATION                                  -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Resource Utilization</h3>
+              <p class="muted">
+                Current utilization and estimated service demand for
+                each monitored resource.
+              </p>
+            </div>
+          </div>
+        
+          <div class="resource-bars" id="resourceBars">
+          
+            <!-- CPU -->
+            <div class="resource-bar" data-resource="cpu">
+            
+              <div class="resource-bar__header">
+                <span class="resource-bar__label">CPU</span>
+                <span
+                  class="resource-bar__value mono"
+                  id="val-cpu">
+                  —
+                </span>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  class="resource-bar__fill"
+                  id="bar-cpu">
+                </div>
+              </div>
+            
+              <div class="resource-bar__details">
+                <span>
+                  Demand:
+                  <strong id="demand-cpu" class="mono">—</strong>
+                </span>
+              
+                <span id="approx-cpu">Measured</span>
+              </div>
+            
+            </div>
+          
+          
+            <!-- Disk -->
+            <div class="resource-bar" data-resource="disk">
+            
+              <div class="resource-bar__header">
+                <span class="resource-bar__label">
+                  Disk I/O
+                </span>
+              
+                <span
+                  class="resource-bar__value mono"
+                  id="val-disk">
+                  —
+                </span>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  class="resource-bar__fill"
+                  id="bar-disk">
+                </div>
+              </div>
+            
+              <div class="resource-bar__details">
+                <span>
+                  Demand:
+                  <strong id="demand-disk" class="mono">—</strong>
+                </span>
+              
+                <span id="approx-disk">—</span>
+              </div>
+            
+            </div>
+          
+          
+            <!-- Network -->
+            <div class="resource-bar" data-resource="network">
+            
+              <div class="resource-bar__header">
+                <span class="resource-bar__label">
+                  Network I/O
+                </span>
+              
+                <span
+                  class="resource-bar__value mono"
+                  id="val-network">
+                  —
+                </span>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  class="resource-bar__fill"
+                  id="bar-network">
+                </div>
+              </div>
+            
+              <div class="resource-bar__details">
+                <span>
+                  Demand:
+                  <strong id="demand-network" class="mono">—</strong>
+                </span>
+              
+                <span id="approx-network">—</span>
+              </div>
+            
+            </div>
+          
+          
+            <!-- Queue -->
+            <div class="resource-bar" data-resource="queue">
+            
+              <div class="resource-bar__header">
+                <span class="resource-bar__label">
+                  Queue
+                </span>
+              
+                <span
+                  class="resource-bar__value mono"
+                  id="val-queue">
+                  —
+                </span>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  class="resource-bar__fill"
+                  id="bar-queue">
+                </div>
+              </div>
+            
+              <div class="resource-bar__details">
+                <span>
+                  Bottleneck severity proxy
+                </span>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- ASYMPTOTIC BOUNDS                                     -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Throughput Bounds</h3>
+              <p class="muted">
+                Theoretical throughput ceilings derived from monitored
+                resource demand.
+              </p>
+            </div>
+          </div>
+        
+          <div class="metric-grid">
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Observed throughput
+              </span>
+            
+              <strong
+                id="bottleneckObservedThroughput"
+                class="metric-card__value mono">
+                —
+              </strong>
+            
+              <small>requests/sec</small>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Bottleneck bound
+              </span>
+            
+              <strong
+                id="bottleneckResourceBound"
+                class="metric-card__value mono">
+                —
+              </strong>
+            
+              <small>requests/sec</small>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Concurrency bound
+              </span>
+            
+              <strong
+                id="bottleneckConcurrencyBound"
+                class="metric-card__value mono">
+                —
+              </strong>
+            
+              <small>requests/sec</small>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Asymptotic bound
+              </span>
+            
+              <strong
+                id="bottleneckAsymptoticBound"
+                class="metric-card__value mono">
+                —
+              </strong>
+            
+              <small>requests/sec</small>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- OBSERVED VS THEORETICAL                               -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Observed vs Theoretical Ceiling</h3>
+              <p class="muted">
+                Comparison of measured throughput against the
+                derived asymptotic limit.
+              </p>
+            </div>
+          
+            <span
+              class="badge"
+              id="bottleneckBoundBadge">
+              —
+            </span>
+          
+          </div>
+        
+          <div class="kv-grid">
+          
+            <div class="kv-grid__item">
+              <span>Observed / bound ratio</span>
+              <strong
+                id="bottleneckBoundRatio"
+                class="mono">
+                —
+              </strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Binding constraint</span>
+              <strong id="bottleneckBindingConstraint">
+                —
+              </strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Optimal crossover concurrency N*</span>
+              <strong
+                id="bottleneckOptimalConcurrency"
+                class="mono">
+                —
+              </strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Total service demand</span>
+              <strong
+                id="bottleneckTotalDemand"
+                class="mono">
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- SIGNALS                                               -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <h3>Analysis Signals</h3>
+              <p class="muted">
+                Indicators generated by the bottleneck model.
+              </p>
+            </div>
+          </div>
+        
+          <div class="kv-grid">
+          
+            <div class="kv-grid__item">
+              <span>Clear dominant bottleneck</span>
+              <strong id="signalDominant">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Near theoretical ceiling</span>
+              <strong id="signalNearCeiling">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Exceeds theoretical ceiling</span>
+              <strong id="signalExceedsCeiling">—</strong>
+            </div>
+          
+            <div class="kv-grid__item">
+              <span>Resource capacity exceeded</span>
+              <strong id="signalCapacityExceeded">—</strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- NOTES / INTERPRETATION                                -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Interpretation</h3>
+          </div>
+        
+          <div id="bottleneckNotes" class="note-list">
+          
+            <p class="empty-note">
+              No bottleneck analysis available yet.
+            </p>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- CAPACITY PLANNING                                         -->
+      <!-- ========================================================== -->
+      <section id="capacity" class="view" data-view="capacity">
+      
+        <div class="view__head">
+          <h2>Capacity Planning</h2>
+          <p>
+            Combines USL, Little's Law, queueing, runtime, and bottleneck
+            analysis to determine the safe operating capacity of the system.
+          </p>
+        </div>
+      
+        <!-- ====================================================== -->
+        <!-- CAPACITY STATUS                                        -->
+        <!-- ====================================================== -->
+      
+        <div class="capacity-status-grid">
+        
+          <div class="capacity-status-card capacity-status-card--primary">
+            <span class="capacity-status-card__label">Overall Capacity Status</span>
+          
+            <div class="capacity-status-card__main">
+              <strong id="capacity-overall-status">—</strong>
+              <span class="badge badge--accent" id="capacity-health-badge">—</span>
+            </div>
+          
+            <p id="capacity-health-description">
+              Run the pipeline to determine system capacity.
+            </p>
+          </div>
+        
+          <div class="capacity-status-card">
+            <span class="capacity-status-card__label">Main Risk</span>
+            <strong id="capacity-main-risk" class="capacity-status-card__value">—</strong>
+            <span class="capacity-status-card__hint">
+              Primary limiting factor
+            </span>
+          </div>
+        
+          <div class="capacity-status-card">
+            <span class="capacity-status-card__label">Recommended Scaling</span>
+            <strong id="capacity-scaling-recommendation" class="capacity-status-card__value">—</strong>
+            <span class="capacity-status-card__hint">
+              Based on current pressure signals
+            </span>
+          </div>
+        
+          <div class="capacity-status-card">
+            <span class="capacity-status-card__label">Prediction Confidence</span>
+            <strong id="capacity-prediction-confidence" class="capacity-status-card__value">—</strong>
+            <span class="capacity-status-card__hint">
+              Reliability of capacity extrapolation
+            </span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- CAPACITY DIAL + PRIMARY NUMBERS                        -->
+        <!-- ====================================================== -->
+      
+        <div class="capacity-overview-grid">
+        
+          <div class="panel capacity-dial-panel">
+          
+            <div class="panel__head panel__head--row">
+              <div>
+                <h3>Current Capacity Usage</h3>
+                <p class="panel__subtext">
+                  Percentage of the selected capacity reference currently being used.
+                </p>
+              </div>
+            
+              <span class="badge badge--accent" id="capacity-reference-badge">
+                —
+              </span>
+            </div>
+          
+            <div class="capacity-dial-row">
+            
+              <div class="capacity-dial">
+                <svg viewBox="0 0 200 120" class="capacity-dial__svg">
+                
+                  <path
+                    d="M10 110 A90 90 0 0 1 190 110"
+                    fill="none"
+                    stroke="var(--line)"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                  />
+
+                  <path
+                    id="capacityDialArc"
+                    d="M10 110 A90 90 0 0 1 190 110"
+                    fill="none"
+                    stroke="var(--amber)"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                    stroke-dasharray="0 283"
+                  />
+
+                </svg>
+              
+                <div class="capacity-dial__center">
+                
+                  <span
+                    class="capacity-dial__value mono"
+                    id="capacity-utilization-value"
+                  >
+                    —
+                  </span>
+                
+                  <span class="capacity-dial__label">
+                    capacity used
+                  </span>
+                
+                </div>
+              </div>
+            
+            
+              <div class="capacity-primary-metrics">
+              
+                <div class="param-card">
+                  <span class="param-card__label">
+                    Safe capacity
+                  </span>
+                
+                  <span
+                    class="param-card__value mono"
+                    id="capacity-safe-users"
+                  >
+                    —
+                  </span>
+                
+                  <span class="param-card__hint">
+                    users
+                  </span>
+                </div>
+              
+              
+                <div class="param-card">
+                  <span class="param-card__label">
+                    Breaking point
+                  </span>
+                
+                  <span
+                    class="param-card__value mono"
+                    id="capacity-breaking-point"
+                  >
+                    —
+                  </span>
+                
+                  <span class="param-card__hint">
+                    estimated maximum
+                  </span>
+                </div>
+              
+              
+                <div class="param-card">
+                  <span class="param-card__label">
+                    Remaining capacity
+                  </span>
+                
+                  <span
+                    class="param-card__value mono"
+                    id="capacity-remaining-users"
+                  >
+                    —
+                  </span>
+                
+                  <span class="param-card__hint">
+                    users
+                  </span>
+                </div>
+              
+              
+                <div class="param-card">
+                  <span class="param-card__label">
+                    Capacity margin
+                  </span>
+                
+                  <span
+                    class="param-card__value mono"
+                    id="capacity-margin"
+                  >
+                    —
+                  </span>
+                
+                  <span class="param-card__hint">
+                    safe headroom
+                  </span>
+                </div>
+              
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        
+          <!-- ==================================================== -->
+          <!-- CAPACITY REFERENCE                                   -->
+          <!-- ==================================================== -->
+        
+          <div class="panel">
+          
+            <div class="panel__head">
+              <h3>Capacity Reference</h3>
+            </div>
+          
+            <div class="capacity-reference-list">
+            
+              <div class="capacity-reference-item">
+                <span>Reference users</span>
+                <strong
+                  id="capacity-reference-users"
+                  class="mono"
+                >
+                  —
+                </strong>
+              </div>
+            
+              <div class="capacity-reference-item">
+                <span>Current users</span>
+                <strong
+                  id="capacity-current-users"
+                  class="mono"
+                >
+                  —
+                </strong>
+              </div>
+            
+              <div class="capacity-reference-item">
+                <span>Observed range</span>
+                <strong
+                  id="capacity-tested-range"
+                  class="mono"
+                >
+                  —
+                </strong>
+              </div>
+            
+              <div class="capacity-reference-item">
+                <span>Reference reason</span>
+                <strong id="capacity-reference-reason">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- CAPACITY UTILIZATION                                   -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Capacity Utilization</h3>
+            
+              <p class="panel__subtext">
+                Comparison of current workload against throughput and
+                user-capacity references.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--accent"
+              id="capacity-utilization-status"
+            >
+              —
+            </span>
+          
+          </div>
+        
+        
+          <div class="metric-grid metric-grid--4">
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Throughput utilization
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-throughput-util"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                User capacity utilization
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-user-util"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                USL optimal capacity usage
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-usl-user-util"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Request pressure
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-request-pressure"
+              >
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- USL CAPACITY                                           -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>USL Capacity Limits</h3>
+          
+            <p class="panel__subtext">
+              Mathematical capacity boundaries obtained from the
+              Universal Scalability Law analysis.
+            </p>
+          </div>
+        
+        
+          <div class="capacity-limit-grid">
+          
+            <div class="capacity-limit-card">
+              <span>USL optimal users</span>
+            
+              <strong
+                id="capacity-usl-optimal"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                theoretical optimum
+              </small>
+            </div>
+          
+          
+            <div class="capacity-limit-card">
+              <span>USL saturation point</span>
+            
+              <strong
+                id="capacity-usl-saturation"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                predicted saturation
+              </small>
+            </div>
+          
+          
+            <div class="capacity-limit-card">
+              <span>USL peak throughput</span>
+            
+              <strong
+                id="capacity-usl-peak"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                requests/sec
+              </small>
+            </div>
+          
+          
+            <div class="capacity-limit-card">
+              <span>Scalability efficiency</span>
+            
+              <strong
+                id="capacity-scalability-efficiency"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                USL efficiency
+              </small>
+            </div>
+          
+          </div>
+        
+        
+          <div class="capacity-warning" id="capacity-extrapolation-warning">
+            <strong>Prediction note</strong>
+          
+            <span id="capacity-extrapolation-message">
+              —
+            </span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- QUEUE CAPACITY                                         -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Queue Capacity</h3>
+            
+              <p class="panel__subtext">
+                Queue utilization and waiting behavior determine whether
+                additional workload can be safely sustained.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--accent"
+              id="capacity-queue-status"
+            >
+              —
+            </span>
+          
+          </div>
+        
+        
+          <div class="metric-grid metric-grid--4">
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Queue utilization
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-queue-util"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Queue length
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-queue-length"
+              >
+                —
+              </strong>
+            
+              <span class="metric-card__hint">
+                requests
+              </span>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Queue waiting time
+              </span>
+            
+              <strong
+                class="metric-card__value mono"
+                id="capacity-queue-wait"
+              >
+                —
+              </strong>
+            
+              <span class="metric-card__hint">
+                seconds
+              </span>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">
+                Queue stability
+              </span>
+            
+              <strong
+                class="metric-card__value"
+                id="capacity-queue-stability"
+              >
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- RUNTIME PRESSURE                                       -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Resource Pressure</h3>
+          
+            <p class="panel__subtext">
+              Current resource pressure detected during the tested workload.
+            </p>
+          </div>
+        
+        
+          <div class="resource-pressure-grid">
+          
+            <div class="resource-pressure-card">
+              <span>CPU</span>
+              <strong id="capacity-pressure-cpu">—</strong>
+              <div class="resource-pressure-bar">
+                <div id="capacity-pressure-bar-cpu"></div>
+              </div>
+            </div>
+          
+          
+            <div class="resource-pressure-card">
+              <span>Memory</span>
+              <strong id="capacity-pressure-memory">—</strong>
+              <div class="resource-pressure-bar">
+                <div id="capacity-pressure-bar-memory"></div>
+              </div>
+            </div>
+          
+          
+            <div class="resource-pressure-card">
+              <span>Disk I/O</span>
+              <strong id="capacity-pressure-disk">—</strong>
+              <div class="resource-pressure-bar">
+                <div id="capacity-pressure-bar-disk"></div>
+              </div>
+            </div>
+          
+          
+            <div class="resource-pressure-card">
+              <span>Network I/O</span>
+              <strong id="capacity-pressure-network">—</strong>
+              <div class="resource-pressure-bar">
+                <div id="capacity-pressure-bar-network"></div>
+              </div>
+            </div>
+          
+          
+            <div class="resource-pressure-card">
+              <span>Queue</span>
+              <strong id="capacity-pressure-queue">—</strong>
+              <div class="resource-pressure-bar">
+                <div id="capacity-pressure-bar-queue"></div>
+              </div>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- CURRENT RUNTIME                                       -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Current Runtime Snapshot</h3>
+          </div>
+        
+        
+          <div class="metric-grid metric-grid--6">
+          
+            <div class="metric-card">
+              <span class="metric-card__label">Users</span>
+              <strong
+                id="capacity-runtime-users"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">Throughput</span>
+              <strong
+                id="capacity-runtime-throughput"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            
+              <span class="metric-card__hint">
+                req/s
+              </span>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">Response time</span>
+              <strong
+                id="capacity-runtime-response"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            
+              <span class="metric-card__hint">
+                ms
+              </span>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">CPU</span>
+              <strong
+                id="capacity-runtime-cpu"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">Memory</span>
+              <strong
+                id="capacity-runtime-memory"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="metric-card">
+              <span class="metric-card__label">Error rate</span>
+              <strong
+                id="capacity-runtime-errors"
+                class="metric-card__value mono"
+              >
+                —
+              </strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- BOTTLENECK                                            -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Capacity Bottleneck</h3>
+            
+              <p class="panel__subtext">
+                Demand-based bottleneck information supplied by the
+                Utilization Law analysis.
+              </p>
+            </div>
+          
+            <span
+              class="badge badge--accent"
+              id="capacity-bottleneck-badge"
+            >
+              —
+            </span>
+          
+          </div>
+        
+        
+          <div class="capacity-bottleneck-grid">
+          
+            <div class="capacity-bottleneck-item">
+              <span>Limiting resource</span>
+              <strong id="capacity-bottleneck-resource">
+                —
+              </strong>
+            </div>
+          
+          
+            <div class="capacity-bottleneck-item">
+              <span>Service demand</span>
+              <strong
+                id="capacity-bottleneck-demand"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                seconds/request
+              </small>
+            </div>
+          
+          
+            <div class="capacity-bottleneck-item">
+              <span>Asymptotic throughput bound</span>
+              <strong
+                id="capacity-asymptotic-bound"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                requests/sec
+              </small>
+            </div>
+          
+          
+            <div class="capacity-bottleneck-item">
+              <span>Optimal concurrency</span>
+              <strong
+                id="capacity-optimal-concurrency"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>
+                users
+              </small>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- LITTLE'S LAW CONSISTENCY                              -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Model Consistency</h3>
+          
+            <p class="panel__subtext">
+              Cross-check between Little's Law derived arrival rate
+              and observed throughput.
+            </p>
+          </div>
+        
+        
+          <div class="consistency-card">
+          
+            <div>
+              <span>Little's Law consistency</span>
+            
+              <strong
+                id="capacity-little-law-status"
+                class="mono"
+              >
+                —
+              </strong>
+            </div>
+          
+            <div>
+              <span>Difference</span>
+            
+              <strong
+                id="capacity-little-law-difference"
+                class="mono"
+              >
+                —
+              </strong>
+            </div>
+          
+            <div>
+              <span>Arrival rate</span>
+            
+              <strong
+                id="capacity-arrival-rate"
+                class="mono"
+              >
+                —
+              </strong>
+            
+              <small>req/s</small>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- CAPACITY SIGNALS                                      -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Capacity Signals</h3>
+          </div>
+        
+        
+          <div class="signal-grid">
+          
+            <div class="signal-card" id="capacity-signal-available">
+              <span>Capacity available</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-low">
+              <span>Low capacity</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-nearly-full">
+              <span>Nearly full</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-exceeded">
+              <span>Capacity exceeded</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-throughput">
+              <span>Throughput exceeded</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-safe">
+              <span>Safe capacity exceeded</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-horizontal">
+              <span>Horizontal scaling candidate</span>
+              <strong>—</strong>
+            </div>
+          
+            <div class="signal-card" id="capacity-signal-vertical">
+              <span>Vertical scaling candidate</span>
+              <strong>—</strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ====================================================== -->
+        <!-- CAPACITY INTERPRETATION                               -->
+        <!-- ====================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Capacity Interpretation</h3>
+          </div>
+        
+          <div
+            id="capacityInterpretation"
+            class="note-list"
+          >
+            <p class="empty-note">
+              Run the pipeline to generate the capacity interpretation.
+            </p>
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- SCALABILITY / FUTURE LOAD                                  -->
+      <!-- ========================================================== -->
+      <section id="scalability" class="view" data-view="scalability">
+      
+        <div class="view__head">
+          <h2>Future Load Prediction</h2>
+          <p>
+            Projects throughput, response time, resource pressure, and system
+            health beyond the tested workload range.
+          </p>
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- EXECUTIVE SUMMARY                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="scalability-summary">
+        
+          <div class="scalability-summary__main">
+            <span class="scalability-summary__label">
+              Recommended maximum users
+            </span>
+          
+            <strong
+              id="scalabilityRecommendedUsers"
+              class="scalability-summary__value mono">
+              —
+            </strong>
+          
+            <span
+              id="scalabilitySummaryStatus"
+              class="badge badge--neutral">
+              Awaiting analysis
+            </span>
+          
+            <p id="scalabilitySummaryText" class="scalability-summary__text">
+              Run the pipeline to generate future-load predictions.
+            </p>
+          </div>
+        
+          <div class="scalability-summary__stats">
+          
+            <div class="summary-stat">
+              <span>Maximum predicted load</span>
+              <strong id="scalabilityMaximumUsers" class="mono">—</strong>
+            </div>
+          
+            <div class="summary-stat">
+              <span>First collapse point</span>
+              <strong id="scalabilityFirstCollapse" class="mono">—</strong>
+            </div>
+          
+            <div class="summary-stat">
+              <span>Safe prediction limit</span>
+              <strong id="scalabilitySafeLimit" class="mono">—</strong>
+            </div>
+          
+            <div class="summary-stat">
+              <span>Prediction confidence</span>
+              <strong id="scalabilityConfidence">—</strong>
+            </div>
+          
+          </div>
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- FUTURE LOAD CHART                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Throughput Under Future Load</h3>
+              <p class="panel__subtitle">
+                Measured performance versus mathematical projection.
+              </p>
+            </div>
+          
+            <span
+              id="scalabilityChartBadge"
+              class="badge badge--neutral">
+              —
+            </span>
+          
+          </div>
+        
+          <div class="chart-frame chart-frame--tall">
+            <canvas id="scalabilityChart"></canvas>
+          </div>
+        
+          <div class="chart-legend">
+            <span class="legend-chip">
+              <span class="legend-swatch legend-swatch--measured"></span>
+              Measured throughput
+            </span>
+          
+            <span class="legend-chip">
+              <span class="legend-swatch legend-swatch--predicted"></span>
+              Predicted throughput
+            </span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- PREDICTION METRICS                                      -->
+        <!-- ======================================================== -->
+      
+        <div class="metric-grid">
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Peak predicted throughput</span>
+            <strong id="scalabilityPeakThroughput" class="metric-card__value mono">
+              —
+            </strong>
+            <span class="metric-card__meta">req/s</span>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Highest response time</span>
+            <strong id="scalabilityPeakResponse" class="metric-card__value mono">
+              —
+            </strong>
+            <span class="metric-card__meta">ms</span>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Highest predicted error rate</span>
+            <strong id="scalabilityPeakError" class="metric-card__value mono">
+              —
+            </strong>
+            <span class="metric-card__meta">%</span>
+          </div>
+        
+          <div class="metric-card">
+            <span class="metric-card__label">Peak capacity utilization</span>
+            <strong id="scalabilityPeakCapacity" class="metric-card__value mono">
+              —
+            </strong>
+            <span class="metric-card__meta">%</span>
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- SYSTEM HEALTH AT FUTURE LOAD                            -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Future System Health</h3>
+            <p class="panel__subtitle">
+              Predicted resource behavior as concurrency increases.
+            </p>
+          </div>
+        
+          <div class="future-health-grid">
+          
+            <!-- CPU -->
+            <div class="future-health-card">
+            
+              <div class="future-health-card__head">
+                <span>CPU</span>
+                <strong id="futureCpuValue" class="mono">—</strong>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  id="futureCpuBar"
+                  class="resource-bar__fill">
+                </div>
+              </div>
+            
+              <span class="future-health-card__meta">
+                Highest predicted CPU utilization
+              </span>
+            
+            </div>
+          
+          
+            <!-- Memory -->
+            <div class="future-health-card">
+            
+              <div class="future-health-card__head">
+                <span>Memory</span>
+                <strong id="futureMemoryValue" class="mono">—</strong>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  id="futureMemoryBar"
+                  class="resource-bar__fill">
+                </div>
+              </div>
+            
+              <span class="future-health-card__meta">
+                Predicted memory usage
+              </span>
+            
+            </div>
+          
+          
+            <!-- Network -->
+            <div class="future-health-card">
+            
+              <div class="future-health-card__head">
+                <span>Network I/O</span>
+                <strong id="futureNetworkValue" class="mono">—</strong>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  id="futureNetworkBar"
+                  class="resource-bar__fill">
+                </div>
+              </div>
+            
+              <span class="future-health-card__meta">
+                Highest predicted network activity
+              </span>
+            
+            </div>
+          
+          
+            <!-- Disk -->
+            <div class="future-health-card">
+            
+              <div class="future-health-card__head">
+                <span>Disk I/O</span>
+                <strong id="futureDiskValue" class="mono">—</strong>
+              </div>
+            
+              <div class="resource-bar__track">
+                <div
+                  id="futureDiskBar"
+                  class="resource-bar__fill">
+                </div>
+              </div>
+            
+              <span class="future-health-card__meta">
+                Highest predicted disk activity
+              </span>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- FUTURE LOAD TABLE                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <h3>Future Load Scenarios</h3>
+              <p class="panel__subtitle">
+                Detailed prediction for each target concurrency level.
+              </p>
+            </div>
+          
+            <span
+              id="scalabilityTableCount"
+              class="badge badge--neutral">
+              0 scenarios
+            </span>
+          
+          </div>
+        
+          <div class="table-wrap">
+          
+            <table
+              class="data-table data-table--numeric"
+              id="scalabilityTable">
+
+              <thead>
+                <tr>
+                  <th>Target users</th>
+                  <th>Predicted throughput</th>
+                  <th>Response time</th>
+                  <th>Error rate</th>
+                  <th>CPU</th>
+                  <th>Capacity</th>
+                  <th>Efficiency</th>
+                  <th>Health</th>
+                </tr>
+              </thead>
+            
+              <tbody id="scalabilityTableBody">
+              
+                <tr>
+                  <td colspan="8" class="data-table__empty">
+                    Run the pipeline to see future-load predictions.
+                  </td>
+                </tr>
+              
+              </tbody>
+            
+            </table>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- RISK / COLLAPSE ANALYSIS                               -->
+        <!-- ======================================================== -->
+      
+        <div class="analysis-grid">
+        
+          <div class="panel">
+          
+            <div class="panel__head">
+              <h3>Scalability Risk</h3>
+            </div>
+          
+            <div class="risk-list">
+            
+              <div class="risk-item">
+                <span>Safe operating limit</span>
+                <strong
+                  id="riskSafeLimit"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>First predicted collapse</span>
+                <strong
+                  id="riskCollapsePoint"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>Highest predicted response time</span>
+                <strong
+                  id="riskResponseTime"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>Highest predicted error rate</span>
+                <strong
+                  id="riskErrorRate"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        
+          <div class="panel">
+          
+            <div class="panel__head">
+              <h3>Model Bound</h3>
+            </div>
+          
+            <div class="risk-list">
+            
+              <div class="risk-item">
+                <span>Asymptotic throughput bound</span>
+                <strong
+                  id="scalabilityAsymptoticBound"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>Binding constraint</span>
+                <strong
+                  id="scalabilityBindingConstraint">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>Bound exceeded</span>
+                <strong
+                  id="scalabilityBoundExceeded">
+                  —
+                </strong>
+              </div>
+            
+              <div class="risk-item">
+                <span>Recommended maximum</span>
+                <strong
+                  id="scalabilityRecommendedMaximum"
+                  class="mono">
+                  —
+                </strong>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- SCALABILITY INTERPRETATION                              -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <h3>Interpretation</h3>
+          </div>
+        
+          <div id="scalabilityInterpretation" class="note-list">
+          
+            <p class="empty-note">
+              Run the pipeline to generate scalability interpretation.
+            </p>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- RECOMMENDATIONS                                            -->
+      <!-- ========================================================== -->
+      <section id="recommendations" class="view" data-view="recommendations">
+      
+        <div class="view__head">
+          <div>
+            <h2>Recommendations</h2>
+            <p>
+              Evidence-based engineering actions derived from capacity,
+              queueing, scalability, USL, and bottleneck analysis.
+            </p>
+          </div>
+        </div>
+      
+        <!-- ======================================================== -->
+        <!-- EXECUTIVE DECISION                                       -->
+        <!-- ======================================================== -->
+      
+        <div class="panel primary-rec" id="primaryRecPanel">
+        
+          <div class="primary-rec__head">
+            <div>
+              <span class="primary-rec__eyebrow">Executive decision</span>
+              <h3 id="primaryRecTag">Recommendation status</h3>
+            </div>
+          
+            <span class="badge badge--neutral" id="recOverallBadge">
+              —
+            </span>
+          </div>
+        
+          <p class="primary-rec__text" id="primaryRecText">
+            Run the full pipeline to generate evidence-based recommendations.
+          </p>
+        
+          <div class="primary-rec__meta" id="recPrimaryMeta" hidden>
+          
+            <div class="primary-rec-meta-item">
+              <span>Primary risk</span>
+              <strong id="rec-primary-risk">—</strong>
+            </div>
+          
+            <div class="primary-rec-meta-item">
+              <span>Scaling strategy</span>
+              <strong id="rec-scaling-strategy">—</strong>
+            </div>
+          
+            <div class="primary-rec-meta-item">
+              <span>Safe users</span>
+              <strong id="rec-safe-users" class="mono">—</strong>
+            </div>
+          
+            <div class="primary-rec-meta-item">
+              <span>Current users</span>
+              <strong id="rec-current-users" class="mono">—</strong>
+            </div>
+          
+          </div>
+        
+          <div class="rec-summary-strip" id="recSummaryStrip" hidden>
+          
+            <div class="rec-summary-chip rec-summary-chip--critical">
+              <span>Critical</span>
+              <strong id="rec-count-critical" class="mono">0</strong>
+            </div>
+          
+            <div class="rec-summary-chip rec-summary-chip--high">
+              <span>High</span>
+              <strong id="rec-count-high" class="mono">0</strong>
+            </div>
+          
+            <div class="rec-summary-chip rec-summary-chip--medium">
+              <span>Medium</span>
+              <strong id="rec-count-medium" class="mono">0</strong>
+            </div>
+          
+            <div class="rec-summary-chip rec-summary-chip--low">
+              <span>Low</span>
+              <strong id="rec-count-low" class="mono">0</strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- IMMEDIATE ACTION                                        -->
+        <!-- ======================================================== -->
+      
+        <div class="panel rec-action-panel" id="recActionPanel" hidden>
+        
+          <div class="panel__head panel__head--row">
+            <div>
+              <span class="panel__eyebrow">Immediate action</span>
+              <h3 id="recActionTitle">—</h3>
+            </div>
+          
+            <span class="badge badge--danger" id="recActionPriority">
+              —
+            </span>
+          </div>
+        
+          <p class="rec-action-panel__problem" id="recActionProblem">
+            —
+          </p>
+        
+          <div class="rec-action-panel__recommendation" id="recActionRecommendation">
+            —
+          </div>
+        
+          <div class="rec-action-panel__actions">
+          
+            <div>
+              <span class="section-label">Recommended actions</span>
+              <ul id="recActionList"></ul>
+            </div>
+          
+            <div class="rec-action-panel__impact">
+              <span class="section-label">Expected impact</span>
+              <p id="recActionImpact">—</p>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- BOTTLENECK                                               -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <span class="panel__eyebrow">Utilization-law evidence</span>
+              <h3>Primary bottleneck</h3>
+            </div>
+          
+            <span
+              class="badge badge--neutral"
+              id="recBottleneckSeverityBadge">
+              —
+            </span>
+          
+          </div>
+        
+          <div class="rec-bottleneck">
+          
+            <div class="rec-bottleneck__main">
+            
+              <span class="rec-bottleneck__label">
+                Limiting monitored resource
+              </span>
+            
+              <strong
+                id="rb-resource"
+                class="rec-bottleneck__resource">
+                —
+              </strong>
+            
+            </div>
+          
+            <div class="rec-bottleneck__metrics">
+            
+              <div class="kv-grid__item">
+                <span>Service demand</span>
+                <strong id="rb-demand" class="mono">—</strong>
+                <small>s/request</small>
+              </div>
+            
+              <div class="kv-grid__item">
+                <span>Asymptotic bound</span>
+                <strong id="rb-bound" class="mono">—</strong>
+                <small>req/s</small>
+              </div>
+            
+              <div class="kv-grid__item">
+                <span>Optimal concurrency</span>
+                <strong id="rb-nstar" class="mono">—</strong>
+                <small>N*</small>
+              </div>
+            
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- RESOURCE PRESSURE                                        -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+            <div>
+              <span class="panel__eyebrow">Runtime evidence</span>
+              <h3>Resource pressure</h3>
+            </div>
+          </div>
+        
+          <div class="resource-rec-grid" id="resourceRecGrid">
+          
+            <div class="resource-rec-card" data-resource-state="neutral">
+              <div class="resource-rec-card__head">
+                <div>
+                  <span class="resource-rec-card__label">CPU</span>
+                  <h4>Processor</h4>
+                </div>
+                <span class="badge badge--neutral" id="rec-cpu-status">—</span>
+              </div>
+            </div>
+          
+            <div class="resource-rec-card" data-resource-state="neutral">
+              <div class="resource-rec-card__head">
+                <div>
+                  <span class="resource-rec-card__label">Memory</span>
+                  <h4>RAM</h4>
+                </div>
+                <span class="badge badge--neutral" id="rec-memory-status">—</span>
+              </div>
+            </div>
+          
+            <div class="resource-rec-card" data-resource-state="neutral">
+              <div class="resource-rec-card__head">
+                <div>
+                  <span class="resource-rec-card__label">Disk I/O</span>
+                  <h4>Storage</h4>
+                </div>
+                <span class="badge badge--neutral" id="rec-disk-status">—</span>
+              </div>
+            </div>
+          
+            <div class="resource-rec-card" data-resource-state="neutral">
+              <div class="resource-rec-card__head">
+                <div>
+                  <span class="resource-rec-card__label">Network I/O</span>
+                  <h4>Network</h4>
+                </div>
+                <span class="badge badge--neutral" id="rec-network-status">—</span>
+              </div>
+            </div>
+          
+            <div class="resource-rec-card" data-resource-state="neutral">
+              <div class="resource-rec-card__head">
+                <div>
+                  <span class="resource-rec-card__label">Queue</span>
+                  <h4>Request queue</h4>
+                </div>
+                <span class="badge badge--neutral" id="rec-queue-status">—</span>
+              </div>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- RECOMMENDATION LIST                                      -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head panel__head--row">
+          
+            <div>
+              <span class="panel__eyebrow">Engineering actions</span>
+              <h3>Recommended actions</h3>
+            </div>
+          
+            <span class="badge badge--neutral" id="recListCount">
+              0 recommendations
+            </span>
+          
+          </div>
+        
+          <div class="rec-card-list" id="recCardList">
+          
+            <p class="empty-note">
+              No recommendations generated yet.
+            </p>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- CAPACITY EVIDENCE                                        -->
+        <!-- ======================================================== -->
+      
+        <div class="panel">
+        
+          <div class="panel__head">
+          
+            <div>
+              <span class="panel__eyebrow">Capacity evidence</span>
+              <h3>Current operating boundary</h3>
+            </div>
+          
+          </div>
+        
+          <div class="evidence-grid">
+          
+            <div class="evidence-card">
+              <span>Current users</span>
+              <strong id="ev-current-users" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>Safe capacity</span>
+              <strong id="ev-safe-users" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>Breaking point</span>
+              <strong id="ev-breaking-point" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>Capacity margin</span>
+              <strong id="ev-capacity-margin" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>Capacity classification</span>
+              <strong id="ev-capacity-class">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>First overloaded point</span>
+              <strong id="ev-first-overloaded" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card">
+              <span>First collapsed point</span>
+              <strong id="ev-first-collapsed" class="mono">—</strong>
+            </div>
+          
+            <div class="evidence-card evidence-card--accent">
+              <span>Recommended maximum</span>
+              <strong id="ev-recommended-max" class="mono">—</strong>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      
+        <!-- ======================================================== -->
+        <!-- DECISION SUMMARY                                         -->
+        <!-- ======================================================== -->
+      
+        <div class="panel rec-decision-panel">
+        
+          <div class="panel__head">
+            <div>
+              <span class="panel__eyebrow">Decision guidance</span>
+              <h3>What this means operationally</h3>
+            </div>
+          </div>
+        
+          <div class="decision-grid">
+          
+            <div class="decision-item">
+              <span class="decision-item__icon">01</span>
+              <div>
+                <strong>Safe operating range</strong>
+                <p id="decision-safe-range">
+                  —
+                </p>
+              </div>
+            </div>
+          
+            <div class="decision-item">
+              <span class="decision-item__icon">02</span>
+              <div>
+                <strong>Growth boundary</strong>
+                <p id="decision-growth-boundary">
+                  —
+                </p>
+              </div>
+            </div>
+          
+            <div class="decision-item">
+              <span class="decision-item__icon">03</span>
+              <div>
+                <strong>Primary infrastructure lever</strong>
+                <p id="decision-scaling">
+                  —
+                </p>
+              </div>
+            </div>
+          
+            <div class="decision-item">
+              <span class="decision-item__icon">04</span>
+              <div>
+                <strong>Model confidence</strong>
+                <p id="decision-confidence">
+                  —
+                </p>
+              </div>
+            </div>
+          
+          </div>
+        
+        </div>
+      
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- MODEL PLAYGROUND                                             -->
+      <!-- ========================================================== -->
+      <section id="playground" class="view" data-view="playground">
+        <div class="view__head">
+          <h2>Model Playground</h2>
+          <p>Feed each mathematical model numbers directly — independent of running a full pipeline.</p>
+        </div>
+
+        <div class="playground-tabs" id="playgroundTabs" role="tablist">
+          <button class="playground-tab is-active" data-model="usl" role="tab" aria-selected="true">USL</button>
+          <button class="playground-tab" data-model="littles-law" role="tab" aria-selected="false">Little's Law</button>
+          <button class="playground-tab" data-model="queueing" role="tab" aria-selected="false">Queueing</button>
+          <button class="playground-tab" data-model="bottleneck" role="tab" aria-selected="false">Bottleneck</button>
+        </div>
+
+        <div class="panel playground-panel">
+
+          <form class="playground-form" data-model-form="usl">
+            <p class="playground-form__hint">Comma-separated user levels and matching throughput values.</p>
+            <div class="field"><label class="field__label" for="pg-usl-users">User levels</label><input class="field__input field__input--mono" id="pg-usl-users" placeholder="20, 50, 100, 200, 300, 500"></div>
+            <div class="field"><label class="field__label" for="pg-usl-throughput">Throughput (req/s)</label><input class="field__input field__input--mono" id="pg-usl-throughput" placeholder="58.3, 95.9, 69.7, 81.2, 86.9, 89.3"></div>
+            <div class="field"><label class="field__label" for="pg-usl-predict">Predict at</label><input class="field__input field__input--mono" id="pg-usl-predict" placeholder="1000, 2000, 5000"></div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="littles-law" hidden>
+            <div class="field-row">
+              <div class="field"><label class="field__label" for="pg-ll-arrival">Arrival rate (req/s)</label><input class="field__input field__input--mono" id="pg-ll-arrival" placeholder="89.27"></div>
+              <div class="field"><label class="field__label" for="pg-ll-rt">Avg response time (ms)</label><input class="field__input field__input--mono" id="pg-ll-rt" placeholder="311.9"></div>
+            </div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="queueing" hidden>
+            <div class="field-row">
+              <div class="field"><label class="field__label" for="pg-q-arrival">Arrival rate λ</label><input class="field__input field__input--mono" id="pg-q-arrival" placeholder="89.27"></div>
+              <div class="field"><label class="field__label" for="pg-q-service">Service rate μ</label><input class="field__input field__input--mono" id="pg-q-service" placeholder="120"></div>
+              <div class="field"><label class="field__label" for="pg-q-servers">Servers</label><input class="field__input field__input--mono" id="pg-q-servers" placeholder="1"></div>
+            </div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="bottleneck" hidden>
+            <div class="field-row">
+              <div class="field"><label class="field__label" for="pg-b-throughput">Throughput (req/s)</label><input class="field__input field__input--mono" id="pg-b-throughput" placeholder="89.27"></div>
+              <div class="field"><label class="field__label" for="pg-b-users">Current users</label><input class="field__input field__input--mono" id="pg-b-users" placeholder="500"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label class="field__label" for="pg-b-cpu">CPU usage %</label><input class="field__input field__input--mono" id="pg-b-cpu" placeholder="17.4"></div>
+              <div class="field"><label class="field__label" for="pg-b-disk">Disk I/O MB/s</label><input class="field__input field__input--mono" id="pg-b-disk" placeholder="2.1"></div>
+              <div class="field"><label class="field__label" for="pg-b-net">Network I/O MB/s</label><input class="field__input field__input--mono" id="pg-b-net" placeholder="4.6"></div>
+            </div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <div class="playground-result" id="playgroundResult" hidden>
+            <div class="playground-result__head">
+              <h4>Result</h4>
+              <button class="btn btn--ghost btn--sm" id="playgroundCopyBtn" type="button">Copy JSON</button>
+            </div>
+            <pre class="log-block" id="playgroundOutput"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- REPORT                                                       -->
+      <!-- ========================================================== -->
+      <section id="report" class="view" data-view="report">
+        <div class="view__head">
+          <h2>Report</h2>
+          <p>A consolidated export of this run.</p>
+        </div>
+
+        <div class="panel report-panel">
+          <div>
+            <h3>Performance analysis report</h3>
+            <p>Export load-test results, runtime metrics, mathematical predictions, capacity analysis, and recommendations as JSON.</p>
+          </div>
+          <button type="button" class="btn btn--secondary" id="exportReportBtn" disabled>
+            <span class="btn__label">Export run data</span>
+          </button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- EXISTING REPOSITORY MODAL                                      -->
+<!-- ============================================================ -->
+<div class="modal-overlay" id="existingRepoModal" hidden aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="existingRepoTitle">
+    <h3 id="existingRepoTitle">Existing repository needs confirmation</h3>
+    <p>A repository with this project name is already in the workspace. You can reuse it or replace it with a fresh clone.</p>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--secondary" id="continueExistingBtn">Continue with existing</button>
+      <button type="button" class="btn btn--danger" id="deleteAndCloneBtn">Delete &amp; clone again</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TOASTS                                                         -->
+<!-- ============================================================ -->
+<div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

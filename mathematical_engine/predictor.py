@@ -5,8 +5,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Tuple
 
-from prediction import usl, little_law, queueing, capacity, recommendation
-from prediction import scalability
+from mathematical_engine import usl, little_law, queueing, capacity, recommendation
+from mathematical_engine import scalability
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ REQUIRED_RUNTIME_KEYS: Tuple[str, ...] = (
     "memory_usage",
     "error_rate",
 )
-REQUIRED_QUEUE_KEYS: Tuple[str, ...] = ("arrival_rate", "service_rate")
+REQUIRED_QUEUE_KEYS: Tuple[str, ...] = ("arrival_rate", "service_rate", "service_rate_source")
 
 
 # ---------------------------------------------------------------------------
@@ -359,12 +359,28 @@ def _prepare_little_law_input(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _prepare_queue_input(metrics: Dict[str, Any]) -> Dict[str, Any]:
+
     queue = metrics["queue"]
+
+    if not isinstance(queue, dict):
+        raise ValueError("'queue' must be a dictionary")
+
+    for key in REQUIRED_QUEUE_KEYS:
+        if key not in queue:
+            raise KeyError(
+                f"Missing required queue key: '{key}'"
+            )
+
     return {
         "arrival_rate": queue["arrival_rate"],
         "service_rate": queue["service_rate"],
+        "service_rate_source": queue["service_rate_source"],
+        "metadata": {
+            "current_users": metrics["runtime"]["current_users"],
+            "throughput": metrics["runtime"]["throughput"],
+            "response_time": metrics["runtime"]["response_time"],
+        },
     }
-
 
 def _prepare_capacity_input(
     usl_results: Dict[str, Any],

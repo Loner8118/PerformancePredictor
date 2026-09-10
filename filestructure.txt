@@ -1,0 +1,30 @@
+automation/
+├─ docker_manager.py
+├─ entry_point_locator.py
+├─ framework_detector.py
+├─ github_manager.py
+├─ health_checker.py
+├─ locust_generator.py
+├─ locust_runner.py
+├─ metrics_collector.py
+├─ route_discovery.py
+└─ validator.py
+metrics/
+├─ csv_parser.py
+└─ runtime_monitor.py
+
+mathematical_engine/
+├─ bottleneck.py
+├─ capacity.py
+├─ little_law.py
+├─ queueing.py
+├─ recommendation.py
+├─ scalability.py
+└─ usl.py
+
+frontend/
+├─ css/
+│  └─ style.css
+├─ js/
+│  └─ app.js
+└─ index.html
