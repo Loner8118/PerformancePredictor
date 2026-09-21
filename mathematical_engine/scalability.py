@@ -4,9 +4,7 @@ import math
 from typing import Any, Dict, List, Optional
 
 
-# --------------------------------------------------------------------------
-# Exceptions
-# --------------------------------------------------------------------------
+# --- Exceptions ---
 
 class ScalabilityValidationError(ValueError):
     """Raised when input data fails validation rules."""
@@ -16,9 +14,55 @@ class ScalabilityCalculationError(RuntimeError):
     """Raised when a scalability calculation cannot be performed."""
 
 
-# --------------------------------------------------------------------------
-# Configurable constants
-# --------------------------------------------------------------------------
+# ==========================================================================
+# What this module does
+# ==========================================================================
+#
+# Projects USL's fitted curve forward onto load levels that haven't been
+# tested yet, and estimates what every other runtime metric (CPU,
+# memory, response time, error rate, disk/network I/O) would look like
+# at each of those levels too - not just throughput.
+#
+# This is the "predicted" leg of the observed / predicted / validated
+# three-way split the pipeline as a whole reports. Deliberately NOT
+# duplicated here:
+#   - "Observed": the raw measurements at load levels that were ACTUALLY
+#     tested (e.g. 20-500 users). That data, and the in-sample fit
+#     quality over that same range, already lives in usl.py's own
+#     analyze() output (observed_vs_predicted, fit_quality). Repeating
+#     it here would just be the same numbers under a different key.
+#   - "Predicted": what this module computes - USL's curve evaluated at
+#     UNTESTED levels (e.g. 600-2000), plus every other metric scaled
+#     off of it. This is genuinely this module's job.
+#   - "Validated": once a predicted level is LATER actually tested (the
+#     project's own "prediction validation experiment" methodology -
+#     fit on 20-500, predict 600-1000, then actually run 600-1000 and
+#     compare), validate_prediction() below checks the prediction
+#     against that real measurement. This is the single most important
+#     number in the whole pipeline's research story, and was previously
+#     entirely missing from this file despite prediction being its
+#     entire purpose - see validate_prediction()'s docstring.
+#
+# Two independent physical ceilings, cross-checked against every
+# prediction, sourced from different modules that each solve a
+# different piece of classical queueing/operational theory:
+#   - bottleneck_results (bottleneck.py): X <= min(1/D_max, N/(D+Z)) -
+#     a hard ceiling on throughput given TODAY's per-request resource
+#     demands. A prediction that exceeds this is impossible right now,
+#     full stop, regardless of what the USL curve says.
+#   - amdahl_results (amdahl.py): the throughput achievable if the
+#     CURRENT bottleneck were optimized away entirely, holding every
+#     other resource's demand fixed. Deliberately not conflated with the
+#     bound above - a prediction can exceed today's asymptotic bound
+#     while still sitting under the post-optimization Amdahl ceiling, so
+#     both are checked and reported independently (see
+#     _extract_amdahl_ceiling()'s docstring).
+# Both are optional: omit either (or both) and predict_scalability()
+# behaves exactly as it did before that module existed - they're
+# supplementary cross-checks, not required inputs.
+
+
+# --- Configurable constants ---
 
 RESPONSE_TIME_GRADUAL_EXPONENT: float = 0.7
 RESPONSE_TIME_MAX_MULTIPLIER: float = 100.0
@@ -33,9 +77,7 @@ CLASSIFICATION_OVERLOADED_MAX_PERCENT: float = 110.0
 OUTPUT_DECIMAL_PLACES: int = 2
 
 
-# --------------------------------------------------------------------------
-# Validation helpers
-# --------------------------------------------------------------------------
+# --- Validation helpers ---
 
 def _require_numeric_field(
     section: Dict[str, Any],
@@ -137,12 +179,50 @@ def _extract_bottleneck_bound_inputs(bottleneck_results: Any) -> Optional[Dict[s
     }
 
 
+def _extract_amdahl_ceiling(amdahl_results: Any) -> Optional[float]:
+    """
+    Pull the bottleneck resource's Amdahl's Law optimization ceiling
+    (implied_max_throughput) out of amdahl.analyze_amdahl()'s output, if
+    available.
+
+    This is a DIFFERENT number from the asymptotic bound above, not a
+    replacement for it: the asymptotic bound (1/D_max) is a hard ceiling
+    on CURRENT throughput given today's per-request demands; this ceiling
+    is a hypothetical best case AFTER the current bottleneck is optimized
+    to be infinitely fast, holding every other resource's demand fixed.
+    A prediction can legitimately exceed the asymptotic bound (impossible
+    today) while still sitting under the Amdahl ceiling (achievable if
+    the bottleneck gets fixed) - the two are checked independently below
+    rather than assuming one always dominates the other.
+
+    Returns None if amdahl_results is missing, unavailable, or the
+    ceiling itself is unbounded (only one resource monitored - see
+    amdahl.py's own caveat about that case).
+    """
+    if not isinstance(amdahl_results, dict) or not amdahl_results.get("available"):
+        return None
+
+    bottleneck_analysis = amdahl_results.get("bottleneck_analysis")
+    if not isinstance(bottleneck_analysis, dict):
+        return None
+
+    ceiling = bottleneck_analysis.get("implied_max_throughput")
+    if isinstance(ceiling, bool) or not isinstance(ceiling, (int, float)):
+        return None
+    if not math.isfinite(ceiling) or ceiling <= 0:
+        return None
+
+    return float(ceiling)
+
+
 def _validate_inputs(
     usl_results: Dict[str, Any],
     capacity_results: Dict[str, Any],
     runtime_metrics: Dict[str, Any],
     prediction_targets: List[float],
     bottleneck_results: Optional[Dict[str, Any]] = None,
+    amdahl_results: Optional[Dict[str, Any]] = None,
+    actual_throughput_by_users: Optional[Dict[float, float]] = None,
 ) -> Dict[str, Any]:
     """
     Validate and normalize all inputs required by predict_scalability().
@@ -166,6 +246,16 @@ def _validate_inputs(
     if bottleneck_results is not None and not isinstance(bottleneck_results, dict):
         raise ScalabilityValidationError(
             "bottleneck_results must be a dictionary if provided."
+        )
+
+    if amdahl_results is not None and not isinstance(amdahl_results, dict):
+        raise ScalabilityValidationError(
+            "amdahl_results must be a dictionary if provided."
+        )
+
+    if actual_throughput_by_users is not None and not isinstance(actual_throughput_by_users, dict):
+        raise ScalabilityValidationError(
+            "actual_throughput_by_users must be a dictionary if provided."
         )
 
     if (
@@ -353,6 +443,31 @@ def _validate_inputs(
     # ----------------------------------------------------------------------
 
     bottleneck_bound_inputs = _extract_bottleneck_bound_inputs(bottleneck_results)
+    amdahl_ceiling = _extract_amdahl_ceiling(amdahl_results)
+
+    # ----------------------------------------------------------------------
+    # Actual (later-measured) throughput, keyed by target user count -
+    # for validate_prediction() below. Keys are normalized to float so a
+    # caller doesn't need to worry about matching int vs. float exactly
+    # against the same prediction_targets values.
+    # ----------------------------------------------------------------------
+
+    normalized_actuals: Dict[float, float] = {}
+    if actual_throughput_by_users:
+        for key, value in actual_throughput_by_users.items():
+            if isinstance(key, bool) or not isinstance(key, (int, float)):
+                raise ScalabilityValidationError(
+                    f"actual_throughput_by_users keys must be numeric user counts, got {key!r}."
+                )
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ScalabilityValidationError(
+                    f"actual_throughput_by_users[{key!r}] must be numeric, got {type(value).__name__}."
+                )
+            if not math.isfinite(value) or value < 0:
+                raise ScalabilityValidationError(
+                    f"actual_throughput_by_users[{key!r}] must be a non-negative finite number."
+                )
+            normalized_actuals[float(key)] = float(value)
 
     return {
         "sigma": sigma,
@@ -372,12 +487,12 @@ def _validate_inputs(
         "current_network_io": current_network_io,
         "targets": targets,
         "bottleneck_bound_inputs": bottleneck_bound_inputs,
+        "amdahl_ceiling": amdahl_ceiling,
+        "actual_throughput_by_users": normalized_actuals,
     }
 
 
-# --------------------------------------------------------------------------
-# USL throughput prediction
-# --------------------------------------------------------------------------
+# --- USL throughput prediction ---
 
 def predict_throughput(
     users: float,
@@ -411,9 +526,7 @@ def predict_throughput(
     return baseline_throughput * users / denominator
 
 
-# --------------------------------------------------------------------------
-# Asymptotic-bound cross-check (bottleneck.py)
-# --------------------------------------------------------------------------
+# --- Asymptotic-bound cross-check (bottleneck.py) ---
 
 def calculate_asymptotic_bound_at(
     users: float,
@@ -459,9 +572,100 @@ def calculate_asymptotic_bound_at(
     }
 
 
-# --------------------------------------------------------------------------
-# Metric prediction helpers
-# --------------------------------------------------------------------------
+# --- Prediction validation (predicted vs. actually-later-measured) ---
+
+def validate_prediction(
+    predicted_throughput: float,
+    actual_throughput: Optional[float],
+    tolerance: float = 0.30,
+) -> Optional[Dict[str, Any]]:
+    """
+    Compare a scalability prediction against what was ACTUALLY measured,
+    once that load level was really tested. This is the "validated" leg
+    of observed/predicted/validated (see module overview above), and the
+    central experimental result the project's own methodology is built
+    around: fit USL on tested levels, predict untested ones, then
+    actually run those levels and check the prediction against reality.
+
+    Matches the same pattern every other mathematical_engine module
+    already has for exactly this reason - little_law.compare_concurrency,
+    queueing.compare_system_time, forced_flow.compare_component_throughput
+    - scalability.py, whose entire purpose is prediction, was previously
+    the one place in the pipeline this was missing.
+
+    Returns None if actual_throughput wasn't supplied - most prediction
+    targets won't have been tested yet, and that's the normal case, not
+    an error.
+    """
+    if actual_throughput is None:
+        return None
+    if isinstance(actual_throughput, bool) or not isinstance(actual_throughput, (int, float)):
+        raise ScalabilityValidationError(
+            f"actual_throughput must be numeric, got {type(actual_throughput).__name__}."
+        )
+    if not math.isfinite(actual_throughput) or actual_throughput < 0:
+        raise ScalabilityValidationError("actual_throughput must be a non-negative finite number.")
+    if not 0 < tolerance:
+        raise ScalabilityValidationError("tolerance must be greater than zero.")
+
+    absolute_error = predicted_throughput - actual_throughput
+    relative_error = (absolute_error / actual_throughput) if actual_throughput != 0 else None
+    percentage_error = abs(relative_error) * 100.0 if relative_error is not None else None
+    consistent = abs(relative_error) <= tolerance if relative_error is not None else None
+
+    return {
+        "predicted_throughput": round(predicted_throughput, OUTPUT_DECIMAL_PLACES),
+        "actual_throughput": actual_throughput,
+        "absolute_error": round(absolute_error, OUTPUT_DECIMAL_PLACES),
+        "relative_error": round(relative_error, 4) if relative_error is not None else None,
+        "percentage_error": round(percentage_error, OUTPUT_DECIMAL_PLACES) if percentage_error is not None else None,
+        "tolerance": tolerance,
+        "consistent": consistent,
+        "note": (
+            f"Predicted throughput diverges from the actually-measured value by more than "
+            f"{tolerance:.0%} - USL's fit may not generalize well to this load level. This is "
+            f"exactly the kind of result worth reporting honestly rather than hiding: it shows "
+            f"where the model's assumptions stop holding, which is itself a real finding."
+        ) if consistent is False else None,
+    }
+
+
+def _summarize_validation(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Aggregate MAE/RMSE/MAPE across every prediction that had a matching
+    actual_throughput supplied - the same error metrics usl.py's own
+    prediction_reliability uses, applied here to the full pipeline's
+    end-to-end predictions rather than USL's in-sample fit alone.
+    """
+    validations = [p["validation"] for p in predictions if p.get("validation") is not None]
+
+    if not validations:
+        return {
+            "validated_count": 0,
+            "consistent_count": 0,
+            "mae": None,
+            "rmse": None,
+            "mape_percent": None,
+        }
+
+    errors = [v["absolute_error"] for v in validations]
+    percentage_errors = [v["percentage_error"] for v in validations if v["percentage_error"] is not None]
+    consistent_count = sum(1 for v in validations if v["consistent"])
+
+    mae = sum(abs(e) for e in errors) / len(errors)
+    rmse = math.sqrt(sum(e * e for e in errors) / len(errors))
+    mape = (sum(percentage_errors) / len(percentage_errors)) if percentage_errors else None
+
+    return {
+        "validated_count": len(validations),
+        "consistent_count": consistent_count,
+        "mae": round(mae, OUTPUT_DECIMAL_PLACES),
+        "rmse": round(rmse, OUTPUT_DECIMAL_PLACES),
+        "mape_percent": round(mape, OUTPUT_DECIMAL_PLACES) if mape is not None else None,
+    }
+
+
+# --- Metric prediction helpers ---
 
 def calculate_efficiency(
     predicted_throughput: float,
@@ -710,9 +914,7 @@ def predict_error_rate(
 
     return max(0.0, min(100.0, predicted))
 
-# --------------------------------------------------------------------------
-# Classification helpers
-# --------------------------------------------------------------------------
+# --- Classification helpers ---
 
 def determine_saturation_risk(
     users: float,
@@ -774,14 +976,13 @@ def classify_prediction(capacity_utilization: float) -> str:
     return "Collapsed"
 
 
-# --------------------------------------------------------------------------
-# Summary
-# --------------------------------------------------------------------------
+# --- Summary ---
 
 def generate_summary(
     predictions: List[Dict[str, Any]],
     safe_users: float,
     bottleneck_bound_available: bool = False,
+    amdahl_ceiling_available: bool = False,
 ) -> Dict[str, Any]:
     """
     Generate summary values from computed predictions.
@@ -797,6 +998,7 @@ def generate_summary(
             "first_overloaded_point": None,
             "first_collapsed_point": None,
             "first_bound_exceeded_point": None,
+            "first_amdahl_ceiling_exceeded_point": None,
             "recommended_max_users": round(
                 safe_users,
                 OUTPUT_DECIMAL_PLACES,
@@ -807,6 +1009,8 @@ def generate_summary(
             "highest_disk_io": None,
             "highest_network_io": None,
             "bottleneck_bound_available": bottleneck_bound_available,
+            "amdahl_ceiling_available": amdahl_ceiling_available,
+            "validation_summary": _summarize_validation([]),
         }
 
     maximum_predicted_users = max(
@@ -837,6 +1041,15 @@ def generate_summary(
             prediction["users"]
             for prediction in predictions
             if prediction.get("exceeds_asymptotic_bound")
+        ),
+        None,
+    )
+
+    first_amdahl_ceiling_exceeded_point = next(
+        (
+            prediction["users"]
+            for prediction in predictions
+            if prediction.get("exceeds_amdahl_ceiling")
         ),
         None,
     )
@@ -915,6 +1128,14 @@ def generate_summary(
             if first_bound_exceeded_point is not None
             else None
         ),
+        "first_amdahl_ceiling_exceeded_point": (
+            round(
+                first_amdahl_ceiling_exceeded_point,
+                OUTPUT_DECIMAL_PLACES,
+            )
+            if first_amdahl_ceiling_exceeded_point is not None
+            else None
+        ),
         "recommended_max_users": round(
             recommended_max_users,
             OUTPUT_DECIMAL_PLACES,
@@ -940,12 +1161,12 @@ def generate_summary(
             OUTPUT_DECIMAL_PLACES,
         ),
         "bottleneck_bound_available": bottleneck_bound_available,
+        "amdahl_ceiling_available": amdahl_ceiling_available,
+        "validation_summary": _summarize_validation(predictions),
     }
 
 
-# --------------------------------------------------------------------------
-# Public entry point
-# --------------------------------------------------------------------------
+# --- Public entry point ---
 
 def predict_scalability(
     usl_results: Dict[str, Any],
@@ -953,6 +1174,8 @@ def predict_scalability(
     runtime_metrics: Dict[str, Any],
     prediction_targets: List[float],
     bottleneck_results: Optional[Dict[str, Any]] = None,
+    amdahl_results: Optional[Dict[str, Any]] = None,
+    actual_throughput_by_users: Optional[Dict[float, float]] = None,
 ) -> Dict[str, Any]:
     """
     Predict application behavior at future user levels.
@@ -976,6 +1199,30 @@ def predict_scalability(
     extrapolation at that point - regardless of what capacity_utilization
     alone would suggest. When omitted, behavior is identical to before
     bottleneck.py existed.
+
+    amdahl_results is optional - pass the direct output of
+    amdahl.analyze_amdahl() to also flag predictions that exceed the
+    OPTIMIZED-bottleneck ceiling (implied_max_throughput): the throughput
+    achievable if the current bottleneck resource were fixed entirely,
+    holding every other resource's demand constant. This is a DIFFERENT,
+    higher ceiling than the asymptotic bound - a prediction can exceed
+    the asymptotic bound (impossible today) while still sitting under the
+    Amdahl ceiling (achievable once the bottleneck is fixed), so both are
+    checked and reported independently rather than one superseding the
+    other. Exceeding the Amdahl ceiling additionally means a single-
+    resource fix won't be enough to reach that load level. When omitted,
+    behavior is identical to before amdahl.py existed.
+
+    actual_throughput_by_users is optional - {user_count: actual
+    throughput measured once that level was really tested, ...}. This is
+    the "validated" leg of observed/predicted/validated (see module
+    overview): a prediction target that was extrapolated before the
+    experiment, then actually run afterward, gets its predicted value
+    checked against reality via validate_prediction() - MAE/RMSE/MAPE
+    across every validated target are aggregated into
+    summary["validation_summary"]. A target with no matching actual value
+    here simply has "validation": None - most targets won't have been
+    tested yet, and that's the normal, expected case.
     """
 
     validated = _validate_inputs(
@@ -984,6 +1231,8 @@ def predict_scalability(
         runtime_metrics=runtime_metrics,
         prediction_targets=prediction_targets,
         bottleneck_results=bottleneck_results,
+        amdahl_results=amdahl_results,
+        actual_throughput_by_users=actual_throughput_by_users,
     )
 
     sigma = validated["sigma"]
@@ -1007,6 +1256,8 @@ def predict_scalability(
     current_network_io = validated["current_network_io"]
 
     bottleneck_bound_inputs = validated["bottleneck_bound_inputs"]
+    amdahl_ceiling = validated["amdahl_ceiling"]
+    actual_throughput_by_users = validated["actual_throughput_by_users"]
 
     predictions: List[Dict[str, Any]] = []
 
@@ -1095,6 +1346,16 @@ def predict_scalability(
                 else predicted_throughput
             )
 
+        # ------------------------------------------------------------
+        # Amdahl optimization-ceiling cross-check (amdahl.py), if
+        # available. Independent of the asymptotic bound above - see
+        # _extract_amdahl_ceiling()'s docstring for why these two
+        # numbers are deliberately not conflated.
+        # ------------------------------------------------------------
+        exceeds_amdahl_ceiling = False
+        if amdahl_ceiling is not None:
+            exceeds_amdahl_ceiling = predicted_throughput > amdahl_ceiling * (1 + 1e-6)
+
         saturation_risk = determine_saturation_risk(
             users=users,
             safe_users=safe_users,
@@ -1110,9 +1371,17 @@ def predict_scalability(
         # means the USL curve has diverged from what's achievable at
         # this N - that's a stronger, more direct signal than the
         # capacity_utilization-based classification above, so it wins.
-        if exceeds_asymptotic_bound:
+        # Exceeding the Amdahl ceiling is at least as strong a signal
+        # (it means even an optimized bottleneck wouldn't get there), so
+        # it escalates the same way.
+        if exceeds_asymptotic_bound or exceeds_amdahl_ceiling:
             classification = "Collapsed"
             saturation_risk = "Critical"
+
+        validation = validate_prediction(
+            predicted_throughput=predicted_throughput,
+            actual_throughput=actual_throughput_by_users.get(users),
+        )
 
         predictions.append({
             "users": round(
@@ -1135,6 +1404,10 @@ def predict_scalability(
                 bound_info["binding_constraint"] if bound_info is not None else None
             ),
             "exceeds_asymptotic_bound": exceeds_asymptotic_bound,
+            "amdahl_max_throughput_ceiling": (
+                _safe_round(amdahl_ceiling, OUTPUT_DECIMAL_PLACES) if amdahl_ceiling is not None else None
+            ),
+            "exceeds_amdahl_ceiling": exceeds_amdahl_ceiling,
             "predicted_cpu": round(
                 predicted_cpu,
                 OUTPUT_DECIMAL_PLACES,
@@ -1169,12 +1442,14 @@ def predict_scalability(
             ) if math.isfinite(capacity_utilization) else capacity_utilization,
             "saturation_risk": saturation_risk,
             "classification": classification,
+            "validation": validation,
         })
 
     summary = generate_summary(
         predictions=predictions,
         safe_users=safe_users,
         bottleneck_bound_available=bottleneck_bound_inputs is not None,
+        amdahl_ceiling_available=amdahl_ceiling is not None,
     )
 
     return {

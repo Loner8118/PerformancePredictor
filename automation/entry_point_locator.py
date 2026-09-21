@@ -60,13 +60,13 @@ class EntryPointLocationError(ValueError):
 DEFAULT_MAX_FILE_SIZE_BYTES = 200_000  # 200 KB - matches framework_detector.py's default
 
 
-# --------------------------------------------------------------------------
-# Configuration
-# --------------------------------------------------------------------------
+# --- Configuration ---
 
 @dataclass
 class LocatorWeights:
     main_block_present: float = 5.0       # `if __name__ == "__main__":` - strong "run me directly" signal
+    app_instantiation_present: float = 5.0  # e.g. `app = Flask(__name__)` in the file - the most direct
+                                             # evidence a file IS the app, not just related to it
     conventional_basename: float = 3.0    # app.py/main.py/index.js/etc.
     depth_penalty_per_level: float = 0.5  # shallower files are slightly preferred as a tiebreak
 
@@ -78,9 +78,7 @@ class LocatorConfidenceThresholds:
     ambiguous_gap: float = 2.0
 
 
-# --------------------------------------------------------------------------
-# Shared helpers
-# --------------------------------------------------------------------------
+# --- Shared helpers ---
 
 def _read_text_safe(absolute_path: str, max_bytes: int) -> str:
     try:
@@ -114,12 +112,23 @@ def _classify_locator_confidence(
 _MAIN_BLOCK_PATTERN = re.compile(r'if\s+__name__\s*==\s*[\'"]__main__[\'"]\s*:')
 _FLASK_INSTANTIATION = re.compile(r"(\w+)\s*=\s*Flask\s*\(")
 _FASTAPI_INSTANTIATION = re.compile(r"(\w+)\s*=\s*FastAPI\s*\(")
-_NODE_COMMAND_FILE_PATTERN = re.compile(r"node\s+([^\s]+)")
+_NODE_SCRIPT_FILE_PATTERN = re.compile(r"([^\s\'\"]+\.(?:js|mjs|cjs|ts))\b")
 
 
-# --------------------------------------------------------------------------
-# Flask / FastAPI resolution
-# --------------------------------------------------------------------------
+def _extract_node_script_file(start_script: str) -> Optional[str]:
+    """
+    Pull the actual script path out of an npm "start" command - e.g.
+    "node server.js", "node --inspect ./src/index.js", or
+    "NODE_ENV=production node dist/main.js". Looks for a token ending in
+    a JS/TS extension anywhere in the command rather than assuming it's
+    the token immediately after "node", since flags (--inspect,
+    --experimental-modules, etc.) commonly sit between the two.
+    """
+    match = _NODE_SCRIPT_FILE_PATTERN.search(start_script)
+    return match.group(1) if match else None
+
+
+# --- Flask / FastAPI resolution ---
 
 def _read_procfile_web_command(repo_path_abs: str, max_bytes: int) -> Optional[str]:
     procfile_path = os.path.join(repo_path_abs, "Procfile")
@@ -132,9 +141,11 @@ def _read_procfile_web_command(repo_path_abs: str, max_bytes: int) -> Optional[s
     return None
 
 
-def _score_python_candidate(rel_path: str, content: str, weights: LocatorWeights) -> float:
+def _score_python_candidate(rel_path: str, content: str, weights: LocatorWeights, instantiation_pattern: "re.Pattern[str]") -> float:
     score = 0.0
     basename = os.path.basename(rel_path).lower()
+    if instantiation_pattern.search(content):
+        score += weights.app_instantiation_present
     if _MAIN_BLOCK_PATTERN.search(content):
         score += weights.main_block_present
     if basename in ("app.py", "main.py", "wsgi.py", "asgi.py", "run.py"):
@@ -183,15 +194,15 @@ def _resolve_flask_or_fastapi(
         }
 
     scored = []
+    instantiation_pattern = _FLASK_INSTANTIATION if framework == "flask" else _FASTAPI_INSTANTIATION
     for rel_path in candidates:
         content = _read_text_safe(os.path.join(repo_path_abs, rel_path), max_file_size_bytes)
-        scored.append((rel_path, _score_python_candidate(rel_path, content, weights), content))
+        scored.append((rel_path, _score_python_candidate(rel_path, content, weights, instantiation_pattern), content))
     scored.sort(key=lambda item: item[1], reverse=True)
 
     best_path, best_score, best_content = scored[0]
     second_score = scored[1][1] if len(scored) > 1 else None
 
-    instantiation_pattern = _FLASK_INSTANTIATION if framework == "flask" else _FASTAPI_INSTANTIATION
     var_match = instantiation_pattern.search(best_content)
     app_variable = var_match.group(1) if var_match else "app"
     if not var_match:
@@ -238,9 +249,7 @@ def _resolve_flask_or_fastapi(
     }
 
 
-# --------------------------------------------------------------------------
-# Django resolution
-# --------------------------------------------------------------------------
+# --- Django resolution ---
 
 def _resolve_django(
     repo_path_abs: str,
@@ -278,6 +287,12 @@ def _resolve_django(
         wsgi_module = os.path.splitext(rel)[0].replace(os.sep, ".")
         notes.append(f"For production, consider: gunicorn {wsgi_module}:application (run from {project_root}).")
 
+    asgi_candidates = [c for c in candidates if os.path.basename(c) == "asgi.py"]
+    if asgi_candidates:
+        rel = os.path.relpath(asgi_candidates[0], project_root) if project_root != "." else asgi_candidates[0]
+        asgi_module = os.path.splitext(rel)[0].replace(os.sep, ".")
+        notes.append(f"For ASGI (async) deployments, consider: uvicorn {asgi_module}:application (run from {project_root}).")
+
     confidence_override = "High"
     if len(manage_candidates) > 1:
         confidence_override = "Medium"
@@ -297,9 +312,7 @@ def _resolve_django(
     }
 
 
-# --------------------------------------------------------------------------
-# Express.js resolution
-# --------------------------------------------------------------------------
+# --- Express.js resolution ---
 
 def _resolve_express(
     repo_path_abs: str,
@@ -330,9 +343,9 @@ def _resolve_express(
             entry_file = os.path.normpath(os.path.join(pj_dir, main_field.strip()))
             resolution_method = "package_json_main"
         elif isinstance(start_script, str):
-            match = _NODE_COMMAND_FILE_PATTERN.search(start_script)
-            if match:
-                entry_file = os.path.normpath(os.path.join(pj_dir, match.group(1)))
+            entry_file_rel = _extract_node_script_file(start_script)
+            if entry_file_rel:
+                entry_file = os.path.normpath(os.path.join(pj_dir, entry_file_rel))
                 resolution_method = "package_json_start_script"
 
         run_command_hint = "npm start" if isinstance(start_script, str) else (f"node {entry_file}" if entry_file else None)
@@ -394,9 +407,7 @@ def _resolve_express(
     }
 
 
-# --------------------------------------------------------------------------
-# Spring Boot resolution
-# --------------------------------------------------------------------------
+# --- Spring Boot resolution ---
 
 def _resolve_springboot(
     repo_path_abs: str,
@@ -424,8 +435,15 @@ def _resolve_springboot(
     # is why this is tracked separately from entry_point_file below.
     project_root = (os.path.dirname(build_manifest_path) or ".") if build_manifest_path else "."
 
+    # application.properties/.yml are tracked as structural markers by
+    # framework_detector (useful there for server.port corroboration), so
+    # they can show up in entry_point_candidates alongside real source
+    # files - but a config file is never a runnable entry point, so only
+    # .java files are eligible here.
     candidates = detection_result.get("entry_point_candidates") or []
-    if not candidates:
+    java_candidates = [c for c in candidates if c.endswith(".java")]
+
+    if not java_candidates:
         return {
             "entry_point_file": None,
             "entry_point_directory": project_root,
@@ -471,7 +489,7 @@ def _resolve_springboot(
             "SpringApplication.run(...) call in the same file."
         )
     else:
-        chosen = sorted(candidates, key=lambda p: (p.count(os.sep), p))[0]
+        chosen = sorted(java_candidates, key=lambda p: (p.count(os.sep), p))[0]
         confidence_override = "Low"
         resolution_method = "candidate_fallback"
 
@@ -484,14 +502,12 @@ def _resolve_springboot(
         "run_command_hint": run_command_hint,
         "resolution_method": resolution_method,
         "confidence_override": confidence_override,
-        "alternatives": [p for p in candidates if p != chosen][:5],
+        "alternatives": [p for p in java_candidates if p != chosen][:5],
         "notes": notes,
     }
 
 
-# --------------------------------------------------------------------------
-# Locator
-# --------------------------------------------------------------------------
+# --- Locator ---
 
 _Resolver = Callable[[str, Dict[str, Any], LocatorWeights, int], Dict[str, Any]]
 
@@ -540,6 +556,12 @@ class EntryPointLocator:
         if not isinstance(detection_result, dict) or "detected_framework" not in detection_result:
             raise EntryPointLocationError(
                 "detection_result must be the dict returned by framework_detector.detect_framework()."
+            )
+
+        candidates_field = detection_result.get("entry_point_candidates")
+        if candidates_field is not None and not isinstance(candidates_field, list):
+            raise EntryPointLocationError(
+                "detection_result['entry_point_candidates'] must be a list of file paths."
             )
 
         framework = detection_result.get("detected_framework")

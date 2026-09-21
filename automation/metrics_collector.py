@@ -203,3 +203,9 @@ class MetricsCollector:
         if not values:
             return 0.0
         return round(max(values), 2)
+
+
+def collect_metrics(users: Any = 0, throughput: Any = 0.0, duration: float = 5, **kwargs: Any) -> Dict[str, Any]:
+    """One-shot: construct a MetricsCollector and run collect(). See
+    MetricsCollector for configurable options (interval)."""
+    return MetricsCollector(**kwargs).collect(users=users, throughput=throughput, duration=duration)

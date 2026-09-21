@@ -45,11 +45,15 @@ class RuntimeMonitor:
     def __init__(
         self,
         interval: float = 1.0,
-        docker_client_timeout_seconds: int = DEFAULT_DOCKER_CLIENT_TIMEOUT_SECONDS,
+        docker_client_timeout_seconds: float = DEFAULT_DOCKER_CLIENT_TIMEOUT_SECONDS,
     ) -> None:
         if not isinstance(interval, (int, float)) or isinstance(interval, bool) or interval <= 0:
             raise RuntimeMonitorError("interval must be a positive number.")
-        if not isinstance(docker_client_timeout_seconds, (int, float)) or docker_client_timeout_seconds <= 0:
+        if (
+            not isinstance(docker_client_timeout_seconds, (int, float))
+            or isinstance(docker_client_timeout_seconds, bool)
+            or docker_client_timeout_seconds <= 0
+        ):
             raise RuntimeMonitorError("docker_client_timeout_seconds must be a positive number.")
 
         self.interval = float(interval)

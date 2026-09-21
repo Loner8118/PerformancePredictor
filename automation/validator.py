@@ -4,7 +4,7 @@ import ast
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from automation.framework_detector import FRAMEWORK_DEFINITIONS, FrameworkDefinition, detect_framework, FrameworkDefinition
+from automation.framework_detector import FRAMEWORK_DEFINITIONS, FrameworkDefinition, detect_framework
 from automation.entry_point_locator import locate_entry_point
 
 

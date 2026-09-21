@@ -1,5 +1,6 @@
 import os
 import math
+from unittest import result
 import uuid
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -42,10 +43,13 @@ from validation.prediction_validation import (
     freeze_predictions,
     record_validation_actuals,
     validate_predictions,
+    PredictionValidationError,
+    ModelIntegrityError,
 )
 from validation.model_validation import validate_levels, ModelValidationError
 from validation.ablation import run_ablation, AblationError
-from validation.report import generate_complete_report
+from validation.report import render_experiment_report, ReportError
+
 
 # Shared disk/network capacity assumptions - kept in sync between
 # capacity.py's threshold-based resource-pressure check and
@@ -75,49 +79,6 @@ DEFAULT_SLO_MAX_ERROR_RATE_PERCENT = 1.0
 # assumes a single worker process.
 active_db_monitors = {}
 
-def _parse_locust_run_time(run_time: str) -> float:
-    """
-    Convert Locust run-time strings such as:
-        '15s'  -> 15.0
-        '1m'   -> 60.0
-        '2m30s' -> 150.0
-
-    Returns the duration in seconds.
-    """
-    if run_time is None:
-        return 0.0
-
-    value = str(run_time).strip().lower()
-
-    if not value:
-        return 0.0
-
-    total_seconds = 0.0
-
-    # Support combined values such as 2m30s
-    import re
-
-    matches = re.findall(r"(\d+(?:\.\d+)?)\s*([hms])", value)
-
-    if not matches:
-        try:
-            return float(value)
-        except ValueError:
-            raise ValueError(
-                f"Invalid Locust run_time format: {run_time!r}"
-            )
-
-    for amount, unit in matches:
-        amount = float(amount)
-
-        if unit == "h":
-            total_seconds += amount * 3600
-        elif unit == "m":
-            total_seconds += amount * 60
-        elif unit == "s":
-            total_seconds += amount
-
-    return total_seconds
 
 def sanitize_for_json(value):
     """Recursively replace NaN/Infinity with None so the response is valid JSON."""
@@ -1409,30 +1370,63 @@ def run_load_testing():
         result["dependencies"] = dependency_result
 
         # --------------------------------------------------------------
-        # USL — fit sigma/kappa to the tested load levels
+        # USL — Universal Scalability Law
         # --------------------------------------------------------------
         usl_result = None
+
         try:
-            user_levels = [level["users"] for level in levels]
-            throughput = [level["mean_throughput"] for level in levels]
+            # Extract measured load-test data
+            user_levels = [
+                float(level["users"])
+                for level in levels
+                if level.get("users") is not None
+                and level.get("mean_throughput") is not None
+            ]
 
-            print("\n=== USL INPUT DATA ===")
-            print("User Levels :", user_levels)
-            print("Throughput  :", throughput)
+            throughput = [
+                float(level["mean_throughput"])
+                for level in levels
+                if level.get("users") is not None
+                and level.get("mean_throughput") is not None
+            ]
 
+            print("\n" + "=" * 70)
+            print("USL — UNIVERSAL SCALABILITY LAW")
+            print("=" * 70)
+
+            print("Measured User Levels :", user_levels)
+            print("Measured Throughput  :", throughput)
+
+            # ----------------------------------------------------------
+            # Run the final USL engine
+            # ----------------------------------------------------------
             usl_result = run_usl_analysis(
-                {"user_levels": user_levels, "throughput": throughput},
+                user_levels=user_levels,
+                throughput=throughput,
                 predict_at=[1000, 2000, 5000],
             )
 
             print("\n=== USL RESULT ===")
             print(usl_result)
 
-            result["prediction"] = {"usl": usl_result}
+            # ----------------------------------------------------------
+            # Store result for API/frontend
+            # ----------------------------------------------------------
+            result["prediction"] = {
+                "usl": usl_result
+            }
 
         except Exception as usl_error:
-            print("\nUSL Prediction Error:", str(usl_error))
-            result["prediction"] = {"usl": {"success": False, "error": str(usl_error)}}
+        
+            print("\n=== USL PREDICTION ERROR ===")
+            print(str(usl_error))
+
+            result["prediction"] = {
+                "usl": {
+                    "success": False,
+                    "error": str(usl_error)
+                }
+            }
 
         # --------------------------------------------------------------
         # Little's Law — one snapshot per tested load level
@@ -1595,77 +1589,42 @@ def run_load_testing():
             }
 
         # ================================================================
-        # FORCED FLOW (component-level service demand)
+        # FORCED FLOW (component-level service demand) - only runs when the
+        # caller supplied visits/service-time instrumentation for a
+        # database/cache/external API (forced_flow_components). Merged into
+        # the Bottleneck stage below so a component can be identified as the
+        # bottleneck alongside cpu/disk/network, not just reported separately.
         # ================================================================
         print("\n" + "=" * 60)
         print("FORCED FLOW ANALYSIS")
         print("=" * 60)
-        
+
         forced_flow_result = None
-        
         try:
             if not forced_flow_components:
                 forced_flow_result = {
                     "available": False,
                     "reason": (
-                        "No component instrumentation (forced_flow_components) "
-                        "was supplied for this run."
+                        "No component instrumentation (forced_flow_components) was supplied "
+                        "for this run - most cloned repositories don't have this added."
                     ),
-                    "system_throughput": None,
-                    "per_component": {},
-                    "ranked_by_demand": [],
-                    "dominant_component": None,
-                    "notes": [
-                        "Forced Flow requires application-level instrumentation.",
-                        "Provide visits_per_request and service_time_seconds "
-                        "for each database, cache, or external API component."
-                    ],
                 }
-        
             elif current_runtime_snapshot is None:
-                forced_flow_result = {
-                    "available": False,
-                    "reason": "No runtime snapshot was available for Forced Flow analysis.",
-                    "system_throughput": None,
-                    "per_component": {},
-                    "ranked_by_demand": [],
-                    "dominant_component": None,
-                    "notes": [],
-                }
-        
+                raise ValueError("No load-test levels available for Forced Flow analysis.")
             else:
-                system_throughput = current_runtime_snapshot.get("throughput")
-        
-                if system_throughput is None:
-                    raise ValueError(
-                        "System throughput is unavailable for Forced Flow analysis."
-                    )
-        
                 forced_flow_result = analyze_forced_flow({
-                    "system_throughput": float(system_throughput),
+                    "system_throughput": current_runtime_snapshot["throughput"],
                     "components": forced_flow_components,
                 })
-        
+
             print("\n=== FORCED FLOW RESULT ===")
             print(forced_flow_result)
-        
+
         except Exception as forced_flow_error:
             print("\nFORCED FLOW ANALYSIS ERROR:")
             print(str(forced_flow_error))
-        
-            forced_flow_result = {
-                "available": False,
-                "reason": str(forced_flow_error),
-                "system_throughput": None,
-                "per_component": {},
-                "ranked_by_demand": [],
-                "dominant_component": None,
-                "notes": [
-                    "Forced Flow analysis could not be completed for this run."
-                ],
-            }
-        
-        # Always expose the result to the frontend.
+            forced_flow_result = {"available": False, "reason": str(forced_flow_error)}
+
         result["forced_flow"] = forced_flow_result
 
         # ================================================================
@@ -2002,572 +1961,6 @@ def run_load_testing():
             print(str(recommendation_error))
             result["recommendations"] = {"success": False, "error": str(recommendation_error)}
 
-        # ================================================================
-        # VALIDATION EXPERIMENT
-        # ================================================================
-        #
-        # The normal prediction pipeline has now finished:
-        #
-        #   Initial load testing
-        #       -> USL
-        #       -> Little's Law
-        #       -> Queueing
-        #       -> Bottleneck
-        #       -> Amdahl
-        #       -> Capacity
-        #       -> Scalability
-        #       -> SLO
-        #       -> Recommendations
-        #
-        # Only AFTER the recommendation stage do we perform independent
-        # higher-load validation testing.
-        #
-        # The validation test uses the SAME LocustRunner, application
-        # container, generated locustfile, host, spawn rate and run time.
-        # The only intentional difference is the user-level range.
-        # ================================================================
-
-        print("\n" + "=" * 60)
-        print("PREDICTION VALIDATION EXPERIMENT")
-        print("=" * 60)
-
-        try:
-            # ------------------------------------------------------------
-            # 1. Validation targets
-            # ------------------------------------------------------------
-            #
-            # These are the same future loads used by the scalability
-            # prediction stage above. They are NOT simulated values here.
-            # Each one will be independently load-tested with Locust.
-            #
-            # Remove any level that has already been tested in the initial
-            # experiment so Phase B contains genuinely new observations.
-            # ------------------------------------------------------------
-
-            validation_targets = [
-                int(users)
-                for users in prediction_targets
-                if int(users) > max(int(level["users"]) for level in levels)
-            ]
-
-            if not validation_targets:
-                raise ValueError(
-                    "No higher-load validation targets are available."
-                )
-
-            print("\nValidation Targets:")
-            print(validation_targets)
-
-            # ------------------------------------------------------------
-            # 2. Create experiment
-            # ------------------------------------------------------------
-            #
-            # One experiment directory owns ALL validation artifacts:
-            #
-            #   metadata.json
-            #   predictions.json
-            #   validation_actual.json
-            #   validated_result.json
-            #   model_validation_result.json
-            #   ablation_result.json
-            #
-            # A new ID is created for every complete load-testing request.
-            # ------------------------------------------------------------
-
-            experiment_id = f"EXP{uuid.uuid4().hex[:8].upper()}"
-
-            experiment = Experiment(
-                base_dir=EXPERIMENTS_DIR,
-                experiment_id=experiment_id,
-            )
-
-            experiment.initialize(
-                target_repository=project_name,
-                docker_image=data.get("image_name", "performance-image"),
-                load_test_config={
-                    "initial_user_levels": [
-                        int(level["users"]) for level in levels
-                    ],
-                    "validation_user_levels": validation_targets,
-                    "spawn_rate": runner.spawn_rate,
-                    "run_time": runner.run_time,
-                    "initial_repetitions": runner.repetitions,
-                    "validation_repetitions": runner.repetitions,
-                },
-            )
-
-            print("\n=== EXPERIMENT INITIALIZED ===")
-            print(f"Experiment ID: {experiment_id}")
-            print(f"Experiment Directory: {experiment.paths['dir']}")
-
-            result["validation"] = {
-                "success": True,
-                "experiment_id": experiment_id,
-                "validation_targets": validation_targets,
-            }
-
-            # --------------------------------------------------------------
-            # PHASE A - FREEZING PREDICTIONS
-            # --------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("PHASE A - FREEZING PREDICTIONS")
-            print("-" * 60)
-
-            if not usl_result:
-                raise ValueError("USL result is unavailable.")
-
-            # Normalize USL result for validation layer.
-            # run_usl_analysis() stores fitted parameters under "parameters",
-            # while prediction_validation.py expects them at the top level.
-            usl_for_validation = {
-                "baseline_throughput": usl_result["parameters"]["baseline_throughput"],
-                "sigma": usl_result["parameters"]["sigma"],
-                "kappa": usl_result["parameters"]["kappa"],
-                "optimal_users": usl_result.get("usl_metrics", {}).get("optimal_users"),
-                "peak_throughput": usl_result.get("usl_metrics", {}).get("peak_throughput"),
-                "saturation_point": usl_result.get("usl_metrics", {}).get("saturation_point"),
-                "fit_quality": usl_result.get("fit_quality", {}),
-                "prediction_reliability": usl_result.get("prediction_reliability", {}),
-            }
-
-            print("\n=== NORMALIZED USL FOR VALIDATION ===")
-            print("Baseline throughput:", usl_for_validation["baseline_throughput"])
-            print("Sigma:", usl_for_validation["sigma"])
-            print("Kappa:", usl_for_validation["kappa"])
-
-            capacity_for_validation = result.get("capacity", {})
-
-            if not capacity_for_validation.get("results"):
-                raise ValueError(
-                    "Capacity analysis did not produce valid results for validation."
-                )
-
-            print("\n=== CAPACITY FOR VALIDATION ===")
-            print(capacity_for_validation)
-
-            freeze_predictions(
-                usl_results=usl_for_validation,
-                capacity_results=capacity_for_validation,
-                runtime_metrics=current_runtime_snapshot,
-                prediction_targets=validation_targets,
-                output_path=experiment.paths["predictions"],
-                bottleneck_results=bottleneck_result,
-                amdahl_results=amdahl_result,
-                experiment_id=experiment_id,
-            )
-
-            # ------------------------------------------------------------
-            # 4. PHASE B - Run independent validation load test
-            # ------------------------------------------------------------
-            #
-            # SAME LocustRunner:
-            #   - same project
-            #   - same container
-            #   - same host
-            #   - same spawn rate
-            #   - same runtime
-            #   - same repetitions
-            #
-            # ONLY user_levels changes.
-            #
-            # Because LocustRunner defaults to repetitions=3 in its own
-            # design, this also gives us repeated measurements for the
-            # statistical validation stage.
-            # ------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("PHASE B - HIGH-LOAD VALIDATION TESTING")
-            print("-" * 60)
-            print(
-                "Running independent Locust measurements at:",
-                validation_targets,
-            )
-
-            validation_run = runner.run(
-                project_path=project_path,
-                container_id=container_id,
-                user_levels=validation_targets,
-                repetitions=runner.repetitions,
-                spawn_rate=runner.spawn_rate,
-                run_time=runner.run_time,
-            )
-
-            if not validation_run.get("success"):
-                raise RuntimeError(
-                    validation_run.get(
-                        "message",
-                        "High-load validation load testing failed.",
-                    )
-                )
-
-            validation_raw_levels = validation_run.get("levels", [])
-
-            if not validation_raw_levels:
-                raise RuntimeError(
-                    "Validation Locust run completed but returned no level results."
-                )
-
-            print("\n=== VALIDATION LOAD TEST COMPLETED ===")
-
-            for validation_level in validation_raw_levels:
-                print(
-                    f"Users: {validation_level.get('users')} | "
-                    f"Throughput: {validation_level.get('mean_throughput', 0):.2f} req/s | "
-                    f"Response: {validation_level.get('mean_average_response_time', 0):.2f} ms | "
-                    f"P95: {validation_level.get('mean_p95', 0):.2f} ms | "
-                    f"Error Rate: {validation_level.get('mean_error_rate', 0):.2f}%"
-                )
-
-            # ------------------------------------------------------------
-            # 5. Normalize Locust validation levels for
-            #    prediction_validation.py
-            # ------------------------------------------------------------
-            #
-            # LocustRunner's public aggregated structure is:
-            #
-            #   mean_throughput
-            #   mean_average_response_time
-            #   mean_error_rate
-            #
-            # prediction_validation.py expects:
-            #
-            #   throughput
-            #   average_response_time
-            #   error_rate
-            #
-            # Keep the original validation results untouched and create
-            # this small adapter instead.
-            # ------------------------------------------------------------
-
-            validation_level_results = []
-
-            for level in validation_raw_levels:
-                validation_level_results.append({
-                    "users": int(level["users"]),
-                    "throughput": float(
-                        level.get("mean_throughput", 0.0)
-                    ),
-                    "average_response_time": float(
-                        level.get("mean_average_response_time", 0.0)
-                    ),
-                    "error_rate": float(
-                        level.get("mean_error_rate", 0.0)
-                    ),
-                })
-
-            # ------------------------------------------------------------
-            # 6. Save Phase B actual observations
-            # ------------------------------------------------------------
-
-            validation_actual_result = record_validation_actuals(
-                predictions_path=experiment.paths["predictions"],
-                level_results=validation_level_results,
-                output_path=experiment.paths["validation_actual"],
-                users_field="users",
-                throughput_field="throughput",
-                response_time_field="average_response_time",
-                error_rate_field="error_rate",
-            )
-
-            print("\n=== VALIDATION ACTUALS RECORDED ===")
-            print(validation_actual_result)
-
-            result["validation"]["phase_b"] = sanitize_for_json(
-                validation_actual_result
-            )
-
-            # ------------------------------------------------------------
-            # 7. PHASE C - Compare prediction vs actual
-            # ------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("PHASE C - PREDICTION VALIDATION")
-            print("-" * 60)
-
-            validated_prediction_result = validate_predictions(
-                predictions_path=experiment.paths["predictions"],
-                validation_actual_path=experiment.paths["validation_actual"],
-                output_path=experiment.paths["validated_result"],
-            )
-
-            print("\n=== VALIDATED PREDICTION RESULT ===")
-            print(validated_prediction_result)
-
-            result["validation"]["phase_c"] = sanitize_for_json(
-                validated_prediction_result
-            )
-
-            # ------------------------------------------------------------
-            # 8. Normalize validation levels for Little's Law + Queueing
-            # ------------------------------------------------------------
-            #
-            # model_validation.py intentionally uses a different input
-            # contract from prediction_validation.py.
-            #
-            # response_time MUST be seconds.
-            #
-            # Locust reports response time in milliseconds.
-            # ------------------------------------------------------------
-
-            validation_service_capacity = (
-                validation_run.get("service_capacity") or {}
-            )
-
-            validation_service_rate = float(
-                validation_service_capacity.get("service_rate", 0.0) or 0.0
-            )
-
-            validation_service_time = float(
-                validation_service_capacity.get("service_time", 0.0) or 0.0
-            )
-
-            model_validation_levels = []
-
-            for level in validation_raw_levels:
-                response_time_seconds = (
-                    float(
-                        level.get(
-                            "mean_average_response_time",
-                            0.0,
-                        )
-                    )
-                    / 1000.0
-                )
-
-                model_validation_levels.append({
-                    "users": int(level["users"]),
-
-                    # Little's Law:
-                    # lambda = observed throughput
-                    "arrival_rate": float(
-                        level.get("mean_throughput", 0.0)
-                    ),
-
-                    # Little's Law / Queueing expect seconds.
-                    "response_time": response_time_seconds,
-
-                    # The configured Locust concurrency is used as the
-                    # observed concurrency reference.
-                    "observed_concurrency": float(level["users"]),
-
-                    # Queueing service-capacity information.
-                    "service_rate": validation_service_rate,
-                    "service_time": validation_service_time,
-
-                    "service_time_p50": float(
-                        level.get(
-                            "mean_average_response_time",
-                            0.0,
-                        )
-                    ),
-
-                    "service_time_p95": float(
-                        level.get("mean_p95", 0.0)
-                    ),
-
-                    "service_time_unit": "ms",
-
-                    "observation_window": (
-                        _parse_locust_run_time(
-                            validation_run.get(
-                                "configuration",
-                                {},
-                            ).get(
-                                "run_time",
-                                runner.run_time,
-                            )
-                        )
-                    ),
-                })
-
-            # ------------------------------------------------------------
-            # 9. Little's Law + Queueing validation
-            # ------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("LITTLE'S LAW + QUEUEING VALIDATION")
-            print("-" * 60)
-
-            model_validation_result = validate_levels(
-                model_validation_levels
-            )
-
-            experiment.save_artifact(
-                "model_validation_result",
-                model_validation_result,
-            )
-
-            print("\n=== MODEL VALIDATION RESULT ===")
-            print(model_validation_result)
-
-            result["validation"]["model_validation"] = sanitize_for_json(
-                model_validation_result
-            )
-
-            # ------------------------------------------------------------
-            # 10. Ablation study
-            # ------------------------------------------------------------
-            #
-            # Ablation uses REAL Phase-B validation observations as
-            # ground truth. It does not use the predicted values as
-            # ground truth.
-            # ------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("ABLATION STUDY")
-            print("-" * 60)
-
-            ablation_validation_levels = []
-
-            for level in validation_raw_levels:
-                ablation_validation_levels.append({
-                    "users": int(level["users"]),
-
-                    # ablation.py expects seconds.
-                    "response_time": (
-                        float(
-                            level.get(
-                                "mean_average_response_time",
-                                0.0,
-                            )
-                        )
-                        / 1000.0
-                    ),
-
-                    # ablation.py expects percentage.
-                    "error_rate_percent": float(
-                        level.get("mean_error_rate", 0.0)
-                    ),
-
-                    "component_metrics": level.get(
-                        "component_metrics"
-                    ),
-                })
-
-            ablation_result = run_ablation(
-                runtime_metrics=current_runtime_snapshot,
-                capacity_results=capacity_for_validation,
-                validation_levels=ablation_validation_levels,
-                queueing_results=queueing_results,
-                bottleneck_results=bottleneck_result,
-                bottleneck_results_with_components=bottleneck_result,
-                component_metrics=forced_flow_components,
-            )
-
-            experiment.save_artifact(
-                "ablation_result",
-                ablation_result,
-            )
-
-            print("\n=== ABLATION RESULT ===")
-            print(ablation_result)
-
-            result["validation"]["ablation"] = sanitize_for_json(
-                ablation_result
-            )
-
-            # ------------------------------------------------------------
-            # 11. GENERATE FINAL EXPERIMENT REPORT
-            # ------------------------------------------------------------
-            #
-            # At this point all major validation artifacts exist:
-            #
-            #   predictions.json
-            #   validation_actual.json
-            #   validated_result.json
-            #   model_validation_result.json
-            #   ablation_result.json
-            #
-            # report.py reads those artifacts and generates:
-            #
-            #   report.md
-            #   predicted_vs_actual.png
-            #
-            # No new prediction or mathematical calculation is performed
-            # here. This stage only formats the completed experiment
-            # results into a reproducible report.
-            # ------------------------------------------------------------
-
-            print("\n" + "-" * 60)
-            print("GENERATING EXPERIMENT REPORT")
-            print("-" * 60)
-
-            report_result = generate_complete_report(
-                experiment=experiment
-            )
-
-            print("\n=== REPORT GENERATED ===")
-            print(
-                f"Report: {report_result.get('report_path')}"
-            )
-
-            print(
-                f"Prediction Graph: "
-                f"{report_result.get('figure_path')}"
-            )
-
-            result["validation"]["report"] = {
-                "success": True,
-                "report_path": report_result.get(
-                    "report_path"
-                ),
-                "figure_path": report_result.get(
-                    "figure_path"
-                ),
-            }
-
-            # ------------------------------------------------------------
-            # 12. Validation summary
-            # ------------------------------------------------------------
-
-            result["validation"]["status"] = "completed"
-
-            result["validation"]["artifacts"] = {
-                "experiment_id": experiment_id,
-                "predictions": experiment.paths["predictions"],
-                "validation_actual": experiment.paths["validation_actual"],
-                "validated_result": experiment.paths["validated_result"],
-                "model_validation_result": experiment.paths[
-                    "model_validation_result"
-                ],
-                "ablation_result": experiment.paths[
-                    "ablation_result"
-                ],
-            }
-
-            print("\n" + "=" * 60)
-            print("PREDICTION VALIDATION COMPLETED")
-            print("=" * 60)
-            print(f"Experiment ID: {experiment_id}")
-
-        except (
-            ExperimentError,
-            ModelValidationError,
-            AblationError,
-            ValueError,
-        ) as validation_error:
-
-            print("\nVALIDATION ERROR:")
-            print(str(validation_error))
-
-            result["validation"] = {
-                "success": False,
-                "status": "failed",
-                "message": str(validation_error),
-            }
-
-        except Exception as validation_error:
-
-            print("\nUNEXPECTED VALIDATION ERROR:")
-            print(str(validation_error))
-
-            result["validation"] = {
-                "success": False,
-                "status": "failed",
-                "message": str(validation_error),
-            }
-
         return jsonify(sanitize_for_json(result)), 200
 
     except Exception as e:
@@ -2836,11 +2229,12 @@ def predict_usl():
     try:
         data = request.get_json()
         result = run_usl_analysis(
-            {
-                "user_levels": data.get("user_levels"),
-                "throughput": data.get("throughput"),
-            },
+            user_levels=data.get("user_levels"),
+            throughput=data.get("throughput"),
             predict_at=data.get("predict_at"),
+            response_time=data.get("response_time"),
+            error_rate=data.get("error_rate"),
+            slo_max_response_time_seconds=data.get("slo_max_response_time_seconds"),
         )
         return jsonify({"success": True, "result": result})
 

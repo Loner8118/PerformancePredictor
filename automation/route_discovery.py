@@ -122,9 +122,7 @@ def _deduplicate_routes(routes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(seen.values(), key=lambda r: (r["path"], r["method"]))
 
 
-# --------------------------------------------------------------------------
-# Shared Python AST helpers (Flask + FastAPI)
-# --------------------------------------------------------------------------
+# --- Shared Python AST helpers (Flask + FastAPI) ---
 
 def _extract_string_const(node: Optional[ast.AST]) -> Optional[str]:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -146,9 +144,7 @@ def _extract_python_param_types(node: Any, path_param_names: List[str]) -> Dict[
     return types
 
 
-# --------------------------------------------------------------------------
-# Flask
-# --------------------------------------------------------------------------
+# --- Flask ---
 
 _FLASK_METHOD_SHORTCUTS = {"get": "GET", "post": "POST", "put": "PUT", "delete": "DELETE", "patch": "PATCH"}
 _FLASK_PARAM_PATTERN = re.compile(r"<(?:(\w+):)?(\w+)>")
@@ -253,9 +249,7 @@ def _discover_flask_routes(
     return routes, notes
 
 
-# --------------------------------------------------------------------------
-# FastAPI
-# --------------------------------------------------------------------------
+# --- FastAPI ---
 
 _FASTAPI_METHOD_SHORTCUTS = {
     "get": "GET", "post": "POST", "put": "PUT", "delete": "DELETE",
@@ -343,11 +337,10 @@ def _discover_fastapi_routes(
     return routes, notes
 
 
-# --------------------------------------------------------------------------
-# Express.js
-# --------------------------------------------------------------------------
+# --- Express.js ---
 
 _EXPRESS_METHOD_PATTERN = re.compile(r"""\b(\w+)\.(get|post|put|delete|patch)\s*\(\s*(['"])((?:(?!\3).)*)\3""")
+_EXPRESS_APP_DECL_PATTERN = re.compile(r"\b(\w+)\s*=\s*express\s*\(\s*\)")
 _EXPRESS_ROUTER_DECL_PATTERN = re.compile(r"\b(\w+)\s*=\s*express\.Router\s*\(")
 _EXPRESS_USE_MOUNT_PATTERN = re.compile(r"""\b\w+\.use\s*\(\s*(['"])((?:(?!\1).)*)\1\s*,\s*(\w+)\s*\)""")
 _EXPRESS_REQUIRE_PATTERN = re.compile(r"""\b(\w+)\s*=\s*require\s*\(\s*(['"])(\.[^'"]*)\2\s*\)""")
@@ -384,7 +377,9 @@ def _discover_express_routes(
     notes: List[str] = []
     file_contents: Dict[str, str] = {}
     require_maps: Dict[str, Dict[str, str]] = {}  # file -> {local_var: resolved_target_file}
+    known_owners_by_file: Dict[str, Set[str]] = {}  # file -> {app/router variable names declared in it}
     router_declared_anywhere = False
+    unrestricted_files: Set[str] = set()
 
     for rel_path in source_files:
         content = _read_text_safe(os.path.join(repo_path_abs, rel_path), max_file_size_bytes)
@@ -392,8 +387,17 @@ def _discover_express_routes(
             continue
         file_contents[rel_path] = content
 
-        if _EXPRESS_ROUTER_DECL_PATTERN.search(content):
-            router_declared_anywhere = True
+        owners = {m.group(1) for m in _EXPRESS_APP_DECL_PATTERN.finditer(content)}
+        owners |= {m.group(1) for m in _EXPRESS_ROUTER_DECL_PATTERN.finditer(content)}
+        if owners:
+            known_owners_by_file[rel_path] = owners
+            router_declared_anywhere = router_declared_anywhere or bool(_EXPRESS_ROUTER_DECL_PATTERN.search(content))
+        else:
+            # Neither express() nor express.Router() was declared locally -
+            # likely imported from elsewhere (e.g. `const app = require('./app')`).
+            # Fall back to unrestricted owner matching for this file rather
+            # than silently dropping its routes.
+            unrestricted_files.add(rel_path)
 
         require_map: Dict[str, str] = {}
         for m in _EXPRESS_REQUIRE_PATTERN.finditer(content):
@@ -419,8 +423,15 @@ def _discover_express_routes(
     routes: List[Dict[str, Any]] = []
     for rel_path, content in file_contents.items():
         file_prefix = mount_prefixes_by_file.get(rel_path, "")
+        allowed_owners = known_owners_by_file.get(rel_path)
         for m in _EXPRESS_METHOD_PATTERN.finditer(content):
             owner, method, _, path = m.groups()
+            # Restricting to known app/router variables (rather than
+            # matching ANY object with a .get(string)/.post(string) call)
+            # avoids false positives from unrelated calls that happen to
+            # share the shape, e.g. `cache.get('some-key')`.
+            if allowed_owners is not None and owner not in allowed_owners:
+                continue
             prefix = file_prefix or mount_prefixes_by_local_var.get((rel_path, owner), "")
             full_path = _join_path(prefix, path)
             routes.append({
@@ -433,6 +444,13 @@ def _discover_express_routes(
 
     if not router_declared_anywhere:
         notes.append("No express.Router() instances were found; only direct app.<method>(...) calls were scanned.")
+    if unrestricted_files:
+        notes.append(
+            f"{len(unrestricted_files)} file(s) call .get()/.post()/etc without a local express()/"
+            f"Router() declaration (likely imported from elsewhere) - matched without owner "
+            f"restriction, so an unrelated object with a same-shaped call could be misreported "
+            f"as a route in those files."
+        )
     notes.append(
         "Express route discovery uses regex pattern matching, not a full JavaScript parser - "
         "dynamically-constructed paths, template literals, or unusual formatting may be missed. "
@@ -443,12 +461,11 @@ def _discover_express_routes(
     return routes, notes
 
 
-# --------------------------------------------------------------------------
-# Django (best-effort)
-# --------------------------------------------------------------------------
+# --- Django (best-effort) ---
 
 _DJANGO_CONVERTER_PARAM_PATTERN = re.compile(r"<(?:(\w+):)?(\w+)>")
 _DJANGO_REGEX_NAMED_GROUP_PATTERN = re.compile(r"\(\?P<(\w+)>")
+_DJANGO_REGEX_NAMED_GROUP_INLINE_PATTERN = re.compile(r"\(\?P<(\w+)>[^)]*\)")
 
 
 def _extract_django_params(raw_path: str) -> List[Dict[str, str]]:
@@ -459,6 +476,16 @@ def _extract_django_params(raw_path: str) -> List[Dict[str, str]]:
     if not params:
         params = [{"name": m.group(1), "type": "string"} for m in _DJANGO_REGEX_NAMED_GROUP_PATTERN.finditer(raw_path)]
     return params
+
+
+def _normalize_django_regex_groups(raw_path: str) -> str:
+    """re_path()'s named regex groups, e.g. (?P<id>\\d+), aren't a usable
+    HTTP path for anything downstream - unlike path()'s <type:name> or
+    FastAPI's {name}, raw regex source isn't a bounded, recognizable
+    placeholder. Collapse each named group down to a plain {name}
+    placeholder instead; a no-op for path()-style routes, which don't
+    contain this syntax."""
+    return _DJANGO_REGEX_NAMED_GROUP_INLINE_PATTERN.sub(r"{\1}", raw_path)
 
 
 def _discover_django_routes(
@@ -505,7 +532,7 @@ def _discover_django_routes(
                 skipped_includes += 1
                 continue
 
-            normalized_path = "/" + raw_path.lstrip("^").rstrip("$").strip("/")
+            normalized_path = "/" + _normalize_django_regex_groups(raw_path).lstrip("^").rstrip("$").strip("/")
             routes.append({
                 "method": "GET",
                 "path": normalized_path or "/",
@@ -527,9 +554,7 @@ def _discover_django_routes(
     return routes, notes
 
 
-# --------------------------------------------------------------------------
-# Spring Boot (best-effort)
-# --------------------------------------------------------------------------
+# --- Spring Boot (best-effort) ---
 
 _SPRING_METHOD_MAPPING_PATTERN = re.compile(
     r'@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*(?:\(\s*(?:value\s*=\s*)?"([^"]*)"\s*\))?'
@@ -593,9 +618,7 @@ def _discover_springboot_routes(
     return routes, notes
 
 
-# --------------------------------------------------------------------------
-# Route Discovery
-# --------------------------------------------------------------------------
+# --- Route Discovery ---
 
 class RouteDiscovery:
     def __init__(

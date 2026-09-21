@@ -26,10 +26,15 @@
     routesResult: null,
     locustResult: null,
     fullResult: null,
+    dependencyResult: null,
+    descriptor: null,
+    buildResult: null,
+    runResult: null,
+    dbMonitorId: null,
     charts: {},
   };
 
-  const PIPELINE_STAGES = ['clone', 'detect', 'entry', 'validate', 'build', 'run', 'health', 'routes', 'generate', 'loadtest'];
+  const PIPELINE_STAGES = ['clone', 'detect', 'deps', 'entry', 'validate', 'build', 'run', 'health', 'routes', 'generate', 'loadtest'];
   const LOAD_LEVEL_USERS = [20, 50, 100, 200, 300, 500];
 
   /* ---------------------------------------------------------- */
@@ -197,12 +202,16 @@
     routes: ['Routes', 'Endpoints discovered on the running container.'],
     'load-testing': ['Load Testing', 'Executes the generated workload across increasing concurrency levels.'],
     runtime: ['Runtime Metrics', 'Container-level resource pressure observed during the load test.'],
+    'database-monitoring': ['Database Monitoring', 'Database connection and pool metrics'],
     usl: ['Scalability (USL)', 'Fits contention and coherency to the measured throughput curve.'],
     'littles-law': ["Little's Law", 'L = λ × W'],
     queueing: ['Queueing Theory', 'M/M/1 utilization and saturation.'],
     bottleneck: ['Bottleneck Analysis', 'Which resource is limiting the system.'],
+    'forced-flow': ['Forced Flow Law', 'Component-level service demand for databases, caches, and external APIs.'],
+    amdahl: ["Amdahl's Law", 'Optimization ceiling for the identified bottleneck.'],
     capacity: ['Capacity Planning', 'Safe operating capacity, combined from every model.'],
     scalability: ['Future Load Prediction', 'Projected system health beyond tested load.'],
+    slo: ['SLO Capacity', 'Up to how many users the response-time and error-rate budget holds.'],
     recommendations: ['Recommendations', 'What the evidence implies you should do.'],
     playground: ['Model Playground', 'Test each mathematical model independently.'],
     report: ['Report', 'Export this run.'],
@@ -430,15 +439,33 @@
       setStage('detect', 'done');
       logLine(`Detected framework: ${fwRes.framework.detected_framework || 'unknown'} (confidence: ${fwRes.framework.confidence || 'n/a'}).`);
 
-      // 3. Entry point
+      // 3. Dependency detection (static, best-effort — never fatal)
+      setStage('deps', 'active');
+      try {
+        const depRes = await api('/api/dependencies/detect', { method: 'POST', body: { project_name: state.projectName } });
+        state.dependencyResult = depRes.dependencies;
+        renderDependencies(depRes.dependencies);
+        setStage('deps', 'done');
+        logLine(`Dependencies detected: ${describeDependencies(depRes.dependencies)}.`);
+      } catch (depErr) {
+        // Static dependency detection is advisory — a failure here shouldn't
+        // stop a run that can still be load-tested perfectly well.
+        state.dependencyResult = null;
+        renderDependencies(null, depErr.message);
+        setStage('deps', 'done');
+        logLine(`Dependency detection skipped: ${depErr.message}`, 'error');
+      }
+
+      // 4. Entry point
       setStage('entry', 'active');
       const epRes = await api('/api/entry-point', { method: 'POST', body: { project_name: state.projectName, detection_result: state.detectionResult } });
       state.locationResult = epRes.entry_point;
       setText('fw-entry-point', epRes.entry_point.entry_point_file || epRes.entry_point.run_command_hint || '—');
       setStage('entry', 'done');
       logLine(`Entry point resolved: ${epRes.entry_point.entry_point_file || epRes.entry_point.run_command_hint || 'unresolved'}.`);
+      refreshDescriptor();
 
-      // 4. Validate
+      // 5. Validate
       setStage('validate', 'active');
       const valRes = await api('/api/validate', { method: 'POST', body: { project_name: state.projectName, detection_result: state.detectionResult, location_result: state.locationResult } });
       state.validation = valRes;
@@ -450,32 +477,35 @@
       setStage('validate', 'done');
       logLine(`Validation passed with ${valRes.warnings.length} warning(s).`, 'success');
 
-      // 5. Docker build
+      // 6. Docker build
       setStage('build', 'active');
       showSection('deployment', false);
       const buildRes = await api('/api/docker/build', { method: 'POST', body: { project_name: state.projectName, image_name: state.imageName, detection_result: state.detectionResult, location_result: state.locationResult } });
       if (!buildRes.success) { setStage('build', 'error'); renderBuild(buildRes, false); throw new ApiError(buildRes.message || 'Docker build failed.', 0, buildRes); }
       state.containerPort = buildRes.container_port;
+      state.buildResult = buildRes;
       renderBuild(buildRes, true);
       setStage('build', 'done');
       logLine(`Docker image built: ${buildRes.image_name} (container port ${buildRes.container_port}).`, 'success');
 
-      // 6. Docker run
+      // 7. Docker run
       setStage('run', 'active');
       const runRes = await api('/api/docker/run', { method: 'POST', body: { image_name: state.imageName, container_name: 'performance-container', container_port: state.containerPort } });
       if (!runRes.success) { setStage('run', 'error'); renderRun(runRes, false); throw new ApiError(runRes.message || 'Container failed to start.', 0, runRes); }
       state.containerId = runRes.container_id;
       state.hostPort = runRes.port;
       state.host = runRes.host;
+      state.runResult = runRes;
       renderRun(runRes, true);
       setStage('run', 'done');
       logLine(`Container started: ${runRes.container_id.slice(0, 12)} on port ${runRes.port}.`, 'success');
+      refreshDescriptor();
 
-      // 7. Health check
+      // 8. Health check
       setStage('health', 'active');
       await runHealthCheck();
 
-      // 8. Route discovery
+      // 9. Route discovery
       setStage('routes', 'active');
       showSection('routes', false);
       const routesRes = await api('/api/routes', { method: 'POST', body: { project_name: state.projectName, detection_result: state.detectionResult, location_result: state.locationResult } });
@@ -483,8 +513,9 @@
       renderRoutes(routesRes.routes);
       setStage('routes', 'done');
       logLine(`Discovered ${routesRes.count} route(s).`, 'success');
+      refreshDescriptor();
 
-      // 9. Locust generate
+      // 10. Locust generate
       setStage('generate', 'active');
       const locustRes = await api('/api/locust/generate', { method: 'POST', body: { project_name: state.projectName, route_discovery_result: state.routesResult } });
       state.locustResult = locustRes.locust;
@@ -492,16 +523,60 @@
       setStage('generate', 'done');
       logLine(`Locust configuration generated (${locustRes.locust.task_count} task(s)).`, 'success');
 
-      // 10. Load testing (the big one)
+      // 11. Load testing + automatic database/cache monitoring
       setStage('loadtest', 'active');
       showSection('load-testing', false);
       initLoadLevelChips();
-      const loadRes = await api('/api/load-testing/run', { method: 'POST', body: { project_name: state.projectName, container_id: state.containerId, port: state.hostPort } });
+
+      setDatabaseMonitoringState('accent', 'Monitoring');
+      logLine(
+        'Starting load test with automatic database/cache monitoring...',
+        'info'
+      );
+
+      const loadRes = await api('/api/load-testing/run', {
+        method: 'POST',
+        body: {
+          project_name: state.projectName,
+          container_id: state.containerId,
+          port: state.hostPort,
+          dependency_result: state.dependencyResult
+        }
+      });
+
       state.fullResult = loadRes;
+
       finishLoadLevelChips();
+
       renderFullResult(loadRes);
+
       setStage('loadtest', 'done');
-      logLine('Load test complete — full mathematical analysis ready.', 'success');
+
+      if (
+        loadRes.database_metrics &&
+        loadRes.database_metrics.available !== false
+      ) {
+        logLine(
+          `Database monitoring completed successfully.`,
+          'success'
+        );
+      } else if (loadRes.database_monitoring) {
+        logLine(
+          `Database monitoring was not available: ${
+            loadRes.database_monitoring.reason ||
+            'no usable runtime configuration was found.'
+          }`
+        );
+      } else {
+        logLine(
+          'No database/cache runtime metrics were returned.'
+        );
+      }
+
+      logLine(
+        'Load test complete — full mathematical analysis ready.',
+        'success'
+      );
 
       setRunStatus('success', 'Complete');
       toast('success', 'Run complete', 'Full pipeline finished — explore Prediction sections for results.');
@@ -522,6 +597,19 @@
     qs('#exportReportBtn').disabled = true;
     setBadge('repoStateBadge', 'Running', 'accent');
     ['crashPanel', 'healthResult', 'healthWait'].forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = true; });
+
+    // Clear stage results carried over from any previous run, so a partially
+    // failed run can't leave the old run's descriptor/dependencies on screen.
+    state.dependencyResult = null;
+    state.descriptor = null;
+    state.buildResult = null;
+    state.runResult = null;
+
+    renderDependencies(null);
+    renderDescriptor(null);
+    renderForcedFlow(null);
+    renderAmdahl(null);
+    renderSLO(null);
   }
 
   async function runHealthCheck() {
@@ -1259,6 +1347,153 @@
       );
   }
 
+  /* ---- Dependency detection --------------------------------- */
+
+  function dependencyName(dep) {
+    if (!dep) return 'Not detected';
+    if (typeof dep === 'string') return dep;
+    return dep.type || dep.name || dep.engine || 'Detected';
+  }
+
+  function describeDependencies(deps) {
+    if (!deps) return 'none';
+    const parts = [];
+    if (deps.database) parts.push(dependencyName(deps.database));
+    if (deps.cache) parts.push(dependencyName(deps.cache));
+    const otherCount = (deps.other_dependencies || []).length;
+    if (otherCount) parts.push(`${otherCount} other`);
+    return parts.length ? parts.join(', ') : 'none detected';
+  }
+
+  function renderDependencies(deps, errorMessage) {
+    if (!deps) {
+      setBadge('dependencyStatusBadge', errorMessage ? 'Failed' : 'Pending', errorMessage ? 'danger' : 'neutral');
+      ['dep-database', 'dep-database-confidence', 'dep-cache', 'dep-cache-confidence'].forEach((id) => setText(id, '—'));
+      setText('dep-other-count', '0');
+      const list = qs('#dep-other-list');
+      if (list) {
+        list.innerHTML = `<div class="signal-empty">${escapeHtml(errorMessage || 'Dependency detection has not been run yet.')}</div>`;
+      }
+      const notes = qs('#dep-notes');
+      if (notes) notes.innerHTML = '<p class="empty-note">No dependency notes yet.</p>';
+      return;
+    }
+
+    const database = deps.database;
+    const cache = deps.cache;
+    const other = deps.other_dependencies || [];
+
+    const found = Boolean(database || cache || other.length);
+    setBadge('dependencyStatusBadge', found ? 'Detected' : 'None found', found ? 'success' : 'neutral');
+
+    setText('dep-database', dependencyName(database));
+    setText('dep-database-confidence', database ? (database.confidence || '—') : '—');
+    setText('dep-cache', dependencyName(cache));
+    setText('dep-cache-confidence', cache ? (cache.confidence || '—') : '—');
+    setText('dep-other-count', String(other.length));
+
+    const list = qs('#dep-other-list');
+    if (list) {
+      list.innerHTML = other.length
+        ? other.map((dep) => `
+            <div class="signal-row">
+              <span class="signal-row__name">${escapeHtml(dependencyName(dep))}</span>
+              <span class="signal-row__meta mono">${escapeHtml(dep.source || '—')}</span>
+            </div>`).join('')
+        : '<div class="signal-empty">No additional dependencies detected.</div>';
+    }
+
+    renderNoteList('#dep-notes', deps.notes, 'No dependency notes for this repository.');
+  }
+
+  /* ---- Application descriptor -------------------------------- */
+
+  // Rebuilt at every pipeline checkpoint rather than only at the end —
+  // build_application_descriptor() accepts partial input by design, so each
+  // call just fills in more of the same normalized shape.
+  async function refreshDescriptor() {
+    if (!state.detectionResult) return;
+    try {
+      const res = await api('/api/application-descriptor', {
+        method: 'POST',
+        body: {
+          detection_result: state.detectionResult,
+          location_result: state.locationResult,
+          route_discovery_result: state.routesResult,
+          docker_build_result: state.buildResult,
+          docker_run_result: state.runResult,
+          dependency_result: state.dependencyResult,
+        },
+      });
+      state.descriptor = res.descriptor;
+      renderDescriptor(res.descriptor);
+    } catch (err) {
+      // Advisory only — the descriptor is a convenience view over data the
+      // rest of the UI already renders from its own stage results.
+      renderDescriptor(null, err.message);
+    }
+  }
+
+  function renderDescriptor(descriptor, errorMessage) {
+    if (!descriptor) {
+      setBadge('descriptorStatusBadge', errorMessage ? 'Failed' : 'Not built', errorMessage ? 'danger' : 'neutral');
+      ['desc-confidence', 'desc-ambiguous', 'desc-route-count', 'desc-route-tier', 'desc-host-port', 'desc-ready'].forEach((id) => setText(id, '—'));
+      const readiness = qs('#desc-readiness');
+      if (readiness) readiness.innerHTML = '<div class="kv-grid__item"><span>—</span><strong>—</strong></div>';
+      const notes = qs('#desc-notes');
+      if (notes) notes.innerHTML = `<p class="empty-note">${escapeHtml(errorMessage || 'Build the descriptor to see notes.')}</p>`;
+      return;
+    }
+
+    const readiness = descriptor.readiness || {};
+    const ready = readiness.ready_for_load_testing === true;
+
+    setBadge('descriptorStatusBadge', ready ? 'Ready' : 'Built', ready ? 'success' : 'accent');
+    setText('desc-confidence', descriptor.overall_confidence || '—');
+    setText('desc-ambiguous', fmtBool(descriptor.ambiguous));
+    setText('desc-route-count', fmtInt(descriptor.route_count, '0'));
+    setText('desc-route-tier', descriptor.route_discovery_tier || '—');
+
+    const hostPort = descriptor.host
+      ? `${descriptor.host}${descriptor.host_port ? ` (:${descriptor.host_port})` : ''}`
+      : '—';
+    setText('desc-host-port', hostPort);
+    setText('desc-ready', fmtBool(readiness.ready_for_load_testing));
+
+    const readinessEl = qs('#desc-readiness');
+    if (readinessEl) {
+      const entries = Object.entries(readiness);
+      readinessEl.innerHTML = entries.length
+        ? entries.map(([key, value]) => `
+            <div class="kv-grid__item">
+              <span>${escapeHtml(formatSignalName(key))}</span>
+              <strong>${value === true ? 'Ready' : value === false ? 'Not ready' : escapeHtml(String(value))}</strong>
+            </div>`).join('')
+        : '<div class="kv-grid__item"><span>—</span><strong>—</strong></div>';
+    }
+
+    // Descriptor notes are {stage, message} objects, not plain strings.
+    const noteLines = (descriptor.notes || []).map((note) =>
+      note && typeof note === 'object'
+        ? `${formatSignalName(note.stage || 'note')}: ${note.message || ''}`
+        : String(note)
+    );
+    renderNoteList('#desc-notes', noteLines, 'No descriptor notes for this run.');
+  }
+
+  /* ---- Shared note-list renderer ----------------------------- */
+
+  function renderNoteList(selector, notes, emptyMessage) {
+    const el = qs(selector);
+    if (!el) return;
+    const items = (notes || []).filter(Boolean);
+    el.innerHTML = items.length
+      ? items.map((note) => `<p class="note-list__item">${escapeHtml(
+          typeof note === 'string' ? note : (note.message || JSON.stringify(note))
+        )}</p>`).join('')
+      : `<p class="empty-note">${escapeHtml(emptyMessage)}</p>`;
+  }
+
   function renderBuild(res, success) {
     setBadge('buildBadge', success ? 'Built' : 'Failed', success ? 'success' : 'danger');
     setText('build-image-name', res.image_name || '—');
@@ -1372,14 +1607,28 @@ truncated: ${fmtBool(locust.truncated)}`;
     const levels = result.levels || [];
     renderLoadTestTableAndChart(levels);
     renderRuntimeMetrics(levels);
+    renderDatabaseMonitoring(result);
     renderUSL(result.prediction && result.prediction.usl, levels);
     renderLittlesLaw(result.little_law, levels);
     renderQueueing(result.queueing);
     renderBottleneck(result.bottleneck);
+    renderForcedFlow(result.forced_flow);
+    renderAmdahl(result.amdahl);
     renderCapacity(result.capacity);
     renderScalability(result.prediction && result.prediction.scalability, levels);
+    renderSLO(result.slo);
     renderRecommendations(result.recommendations);
     renderOverviewStats(result);
+
+    // The pipeline runs its own dependency detection internally, so its
+    // result can differ from the standalone call made at stage 3 (e.g. the
+    // stage-3 call failed but the pipeline's succeeded). Prefer the
+    // pipeline's when it produced usable data.
+    if (result.dependencies && result.dependencies.success !== false) {
+      state.dependencyResult = result.dependencies;
+      renderDependencies(result.dependencies);
+      refreshDescriptor();
+    }
   }
 
   function renderOverviewStats(result) {
@@ -1482,2227 +1731,2913 @@ truncated: ${fmtBool(locust.truncated)}`;
     });
   }
 
-  /* ---- USL ---------------------------------------------------- */
-  
-  function renderUSL(usl, levels) {
-  
-    /*
-    * USL frontend renderer
-    *
-    * Backend payload:
-    *   parameters
-    *   usl_metrics
-    *   predictions
-    *   predictions_with_confidence
-    *   efficiency
-    *   scalability_classification
-    *   fit_quality
-    *   fit_quality_status
-    *   parameter_interpretation
-    *   observed_vs_predicted
-    *   parameter_uncertainty
-    *   prediction_reliability
-    *   observed_range
-    */
-  
-    const safeLevels = Array.isArray(levels) ? levels : [];
-  
-    /* ---------------------------------------------------------- */
-    /* Empty / failed state                                       */
-    /* ---------------------------------------------------------- */
-  
-    if (!usl || usl.success === false || !usl.parameters) {
-    
-      setText('usl-sigma', '—');
-      setText('usl-kappa', '—');
-      setText('usl-baseline', '—');
-      setText('usl-peak', '—');
-      setText('usl-optimal', '—');
-      setText('usl-saturation', '—');
-    
-      setText('usl-r2', '—');
-      setText('usl-rmse', '—');
-      setText('usl-loo-r2', '—');
-    
-      setText('usl-observations', '—');
-      setText('usl-tested-range', '—');
-      setText('usl-peak-range', '—');
-      setText('usl-extrapolated-count', '—');
-    
-      setText('uslSigmaInterpretation', '—');
-      setText('uslKappaInterpretation', '—');
-    
-      setText('usl-sigma-stderr', '—');
-      setText('usl-kappa-stderr', '—');
-      setText('usl-kappa-relative-uncertainty', '—');
-    
-      setText('usl-fit-summary', 'No fit assessment available.');
-      setText('uslClassificationDescription', 'No classification available.');
-    
-      setBadge('uslFitStatus', 'Fit unavailable', 'neutral');
-      setBadge('uslFitStatusSecondary', '—', 'neutral');
-      setBadge('uslReliabilityBadge', 'Reliability unavailable', 'neutral');
-      setBadge('uslClassification', '—', 'neutral');
-      setBadge('uslResidualBadge', '—', 'neutral');
-    
-      const emptyObserved = qs('#uslObservedTableBody');
-      if (emptyObserved) {
-        emptyObserved.innerHTML = `
+/* ============================================================
+USL — UNIVERSAL SCALABILITY LAW Frontend renderer
+============================================================ */
+
+function renderUSL(usl, levels) {
+
+const safeLevels = Array.isArray(levels)
+? levels
+: [];
+
+/* ==========================================================
+Helpers
+========================================================== */
+
+const finiteNumber = (value) => {
+
+const number = Number(value);
+
+return Number.isFinite(number)
+  ? number
+  : null;
+
+};
+
+const safeObject = (value) => {
+
+return value && typeof value === 'object'
+  ? value
+  : {};
+
+};
+
+const formatNumber = (value, decimals = 2) => {
+
+const number = finiteNumber(value);
+
+return number === null
+  ? '—'
+  : fmt(number, decimals);
+
+};
+
+const formatInteger = (value) => {
+
+const number = finiteNumber(value);
+
+return number === null
+  ? '—'
+  : fmtInt(number);
+
+};
+
+const setEmptyState = () => {
+
+const ids = [
+
+  'usl-sigma',
+  'usl-kappa',
+  'usl-baseline',
+  'usl-peak',
+  'usl-optimal',
+  'usl-saturation',
+
+  'usl-r2',
+  'usl-rmse',
+  'usl-loo-r2',
+
+  'usl-observations',
+  'usl-tested-range',
+  'usl-peak-range',
+  'usl-extrapolated-count',
+
+  'usl-sigma-stderr',
+  'usl-kappa-stderr',
+  'usl-kappa-relative-uncertainty',
+
+  'uslSummaryClassification',
+  'uslSummaryOptimal',
+  'uslSummaryPeak',
+  'uslSummaryReliability'
+
+];
+
+
+ids.forEach((id) => setText(id, '—'));
+
+
+setText(
+  'usl-fit-summary',
+  'No fit assessment available.'
+);
+
+
+setText(
+  'uslClassificationDescription',
+  'No scalability classification available.'
+);
+
+
+setText(
+  'uslSigmaInterpretation',
+  '—'
+);
+
+
+setText(
+  'uslKappaInterpretation',
+  '—'
+);
+
+
+setText(
+  'uslUncertaintyNote',
+  'Parameter uncertainty assessment is not available.'
+);
+
+
+setBadge(
+  'uslFitStatus',
+  'Fit unavailable',
+  'neutral'
+);
+
+
+setBadge(
+  'uslFitStatusSecondary',
+  '—',
+  'neutral'
+);
+
+
+setBadge(
+  'uslReliabilityBadge',
+  'Extrapolation unavailable',
+  'neutral'
+);
+
+
+setBadge(
+  'uslClassification',
+  '—',
+  'neutral'
+);
+
+
+setBadge(
+  'uslResidualBadge',
+  '—',
+  'neutral'
+);
+
+
+setBadge(
+  'uslPredictionStatus',
+  'Model estimates unavailable',
+  'neutral'
+);
+
+
+const observedBody =
+  qs('#uslObservedTableBody');
+
+
+if (observedBody) {
+
+  observedBody.innerHTML = `
+    <tr>
+      <td colspan="5" class="data-table__empty">
+        USL model results are unavailable.
+      </td>
+    </tr>
+  `;
+
+}
+
+
+const predictionBody =
+  qs('#uslPredictionTableBody');
+
+
+if (predictionBody) {
+
+  predictionBody.innerHTML = `
+    <tr>
+      <td colspan="5" class="data-table__empty">
+        No model estimates are available.
+      </td>
+    </tr>
+  `;
+
+}
+
+
+const warningPanel =
+  qs('#uslExtrapolationPanel');
+
+
+if (warningPanel) {
+
+  warningPanel.hidden = true;
+
+}
+
+
+/*
+ * Clear chart rather than leaving an old result visible.
+ */
+makeOrUpdateChart(
+  'usl',
+  'uslChart',
+  {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    }
+  }
+);
+
+};
+
+/* ==========================================================
+Invalid / failed backend result
+========================================================== */
+
+if (
+!usl
+|| usl.success === false
+|| !usl.parameters
+) {
+
+setEmptyState();
+
+return;
+
+}
+
+/* ==========================================================
+Backend sections
+========================================================== */
+
+const parameters =
+safeObject(usl.parameters);
+
+const metrics =
+safeObject(usl.usl_metrics);
+
+const fit =
+safeObject(usl.fit_quality);
+
+const reliability =
+safeObject(usl.prediction_reliability);
+
+const uncertainty =
+safeObject(usl.parameter_uncertainty);
+
+const classification =
+safeObject(usl.scalability_classification);
+
+const interpretation =
+safeObject(usl.parameter_interpretation);
+
+const observedRange =
+safeObject(usl.observed_range);
+
+/* ==========================================================
+Core parameters
+========================================================== */
+
+setText(
+'usl-sigma',
+formatNumber(parameters.sigma, 6)
+);
+
+setText(
+'usl-kappa',
+formatNumber(parameters.kappa, 8)
+);
+
+setText(
+'usl-baseline',
+formatNumber(
+parameters.baseline_throughput,
+2
+)
+);
+
+setText(
+'usl-peak',
+formatNumber(
+metrics.peak_throughput,
+2
+)
+);
+
+setText(
+'usl-optimal',
+formatInteger(
+metrics.optimal_users
+)
+);
+
+setText(
+'usl-saturation',
+formatInteger(
+metrics.saturation_point
+)
+);
+
+/* ==========================================================
+Tested range
+========================================================== */
+
+let minUsers =
+finiteNumber(observedRange.min_users);
+
+let maxUsers =
+finiteNumber(observedRange.max_users);
+
+/*
+
+* Fallback only for displaying the measured range.
+* This does NOT create or modify a model prediction.
+  */
+
+if (
+minUsers === null
+|| maxUsers === null
+) {
+
+const measuredUsers =
+  safeLevels
+    .map((level) => finiteNumber(level.users))
+    .filter((value) => value !== null);
+
+
+if (measuredUsers.length) {
+
+  minUsers =
+    Math.min(...measuredUsers);
+
+  maxUsers =
+    Math.max(...measuredUsers);
+
+}
+
+}
+
+if (
+minUsers !== null
+&& maxUsers !== null
+) {
+
+setText(
+  'usl-tested-range',
+  `${formatInteger(minUsers)} – ${formatInteger(maxUsers)}`
+);
+
+} else {
+
+setText(
+  'usl-tested-range',
+  '—'
+);
+
+}
+
+setText(
+'usl-observations',
+formatInteger(usl.observations)
+);
+
+/* ==========================================================
+Extrapolation points
+========================================================== */
+
+const extrapolatedPoints =
+Array.isArray(usl.extrapolated_points)
+? usl.extrapolated_points
+: [];
+
+setText(
+'usl-extrapolated-count',
+formatInteger(
+extrapolatedPoints.length
+)
+);
+
+/* ==========================================================
+Observed peak status
+========================================================== */
+
+const peakObserved =
+reliability.peak_observed_in_tested_range;
+
+if (peakObserved === true) {
+
+setText(
+  'usl-peak-range',
+  'Yes'
+);
+
+} else if (peakObserved === false) {
+
+setText(
+  'usl-peak-range',
+  'No'
+);
+
+} else {
+
+setText(
+  'usl-peak-range',
+  'Unavailable'
+);
+
+}
+
+/* ==========================================================
+Fit quality
+========================================================== */
+
+const r2 =
+finiteNumber(fit.r2);
+
+const rmse =
+finiteNumber(fit.rmse);
+
+setText(
+'usl-r2',
+r2 === null
+? '—'
+: r2.toFixed(3)
+);
+
+setText(
+'usl-rmse',
+rmse === null
+? '—'
+: formatNumber(rmse, 2)
+);
+
+/* ==========================================================
+LOO validation
+========================================================== */
+
+const loo =
+safeObject(reliability.loo_cv);
+
+const looR2 =
+finiteNumber(loo.loo_r2);
+
+if (
+loo.available === true
+&& looR2 !== null
+) {
+
+setText(
+  'usl-loo-r2',
+  looR2.toFixed(3)
+);
+
+} else {
+
+setText(
+  'usl-loo-r2',
+  'N/A'
+);
+
+}
+
+/* ==========================================================
+Fit status
+========================================================== */
+
+const fitStatus =
+typeof usl.fit_quality_status === 'string'
+? usl.fit_quality_status
+: 'Unknown';
+
+const fitStatusLower =
+fitStatus.toLowerCase();
+
+let fitVariant = 'neutral';
+
+if (
+fitStatusLower === 'excellent'
+|| fitStatusLower === 'good'
+) {
+
+fitVariant = 'success';
+
+} else if (
+fitStatusLower === 'moderate'
+) {
+
+fitVariant = 'warning';
+
+} else if (
+fitStatusLower === 'poor'
+) {
+
+fitVariant = 'danger';
+
+}
+
+setBadge(
+'uslFitStatus',
+`Fit: ${fitStatus}`,
+fitVariant
+);
+
+setBadge(
+'uslFitStatusSecondary',
+fitStatus,
+fitVariant
+);
+
+/* ==========================================================
+Fit explanation
+========================================================== */
+
+let fitSummary =
+'Fit quality could not be determined.';
+
+if (fitStatusLower === 'excellent') {
+
+fitSummary =
+  'The backend classified the USL fit as excellent for the measured observations.';
+
+} else if (fitStatusLower === 'good') {
+
+fitSummary =
+  'The backend classified the USL fit as good for the measured observations.';
+
+} else if (fitStatusLower === 'moderate') {
+
+fitSummary =
+  'The backend classified the fit as moderate. Model estimates should be interpreted with the reported uncertainty.';
+
+} else if (fitStatusLower === 'poor') {
+
+fitSummary =
+  'The measured throughput does not closely follow the fitted USL model. Extrapolation should therefore be treated cautiously.';
+
+}
+
+setText(
+'usl-fit-summary',
+fitSummary
+);
+
+/* ==========================================================
+Extrapolation reliability
+========================================================== */
+
+const reliabilityStatus =
+typeof reliability.status === 'string'
+? reliability.status
+: 'unknown';
+
+const usableForExtrapolation =
+reliability.usable_for_extrapolation === true;
+
+let reliabilityVariant =
+'neutral';
+
+if (usableForExtrapolation) {
+
+reliabilityVariant = 'success';
+
+} else if (
+reliabilityStatus.toLowerCase() === 'low'
+|| reliabilityStatus.toLowerCase() === 'moderate'
+) {
+
+reliabilityVariant = 'warning';
+
+}
+
+setBadge(
+'uslReliabilityBadge',
+`Extrapolation: ${reliabilityStatus}`,
+reliabilityVariant
+);
+
+/* ==========================================================
+Scalability classification
+========================================================== */
+
+const classificationName =
+typeof classification.classification === 'string'
+? classification.classification
+: 'Unknown';
+
+const classificationDescription =
+typeof classification.description === 'string'
+? classification.description
+: 'No scalability interpretation is available.';
+
+const classificationLower =
+classificationName.toLowerCase();
+
+let classificationVariant =
+'neutral';
+
+if (
+classificationLower.includes('retrograde')
+) {
+
+classificationVariant = 'danger';
+
+} else if (
+classificationLower.includes('sublinear')
+) {
+
+classificationVariant = 'warning';
+
+} else if (
+classificationLower.includes('linear')
+) {
+
+classificationVariant = 'success';
+
+}
+
+setBadge(
+'uslClassification',
+classificationName,
+classificationVariant
+);
+
+setText(
+'uslClassificationDescription',
+classificationDescription
+);
+
+/* ==========================================================
+Parameter interpretation
+========================================================== */
+
+setText(
+'uslSigmaInterpretation',
+interpretation.sigma
+|| 'Contention interpretation unavailable.'
+);
+
+setText(
+'uslKappaInterpretation',
+interpretation.kappa
+|| 'Coherency interpretation unavailable.'
+);
+
+/* ==========================================================
+Parameter uncertainty
+========================================================== */
+
+setText(
+'usl-sigma-stderr',
+formatNumber(
+uncertainty.sigma_stderr,
+8
+)
+);
+
+setText(
+'usl-kappa-stderr',
+formatNumber(
+uncertainty.kappa_stderr,
+8
+)
+);
+
+const kappaRelative =
+finiteNumber(
+reliability.kappa_relative_uncertainty
+);
+
+if (kappaRelative !== null) {
+
+setText(
+  'usl-kappa-relative-uncertainty',
+  fmtPercent(
+    kappaRelative * 100,
+    1
+  )
+);
+
+} else {
+
+setText(
+  'usl-kappa-relative-uncertainty',
+  'N/A'
+);
+
+}
+
+let uncertaintyNote =
+'Parameter uncertainty assessment is not available.';
+
+if (kappaRelative !== null) {
+
+if (kappaRelative > 0.5) {
+
+  uncertaintyNote =
+    'κ has high relative uncertainty. Derived values such as the theoretical optimum should therefore not be treated as precise capacity limits.';
+
+} else {
+
+  uncertaintyNote =
+    'The current measurements provide a measurable estimate of the USL coherency parameter. The reported uncertainty should still be considered when interpreting extrapolated results.';
+
+}
+
+}
+
+setText(
+'uslUncertaintyNote',
+uncertaintyNote
+);
+
+/* ==========================================================
+Observed vs model
+========================================================== */
+
+const observedVsPredicted =
+safeObject(usl.observed_vs_predicted);
+
+const observedEntries =
+Object.entries(observedVsPredicted)
+
+  .map(([key, value]) => {
+
+    const row =
+      safeObject(value);
+
+
+    return {
+
+      users:
+        finiteNumber(key),
+
+      observed:
+        finiteNumber(row.observed),
+
+      predicted:
+        finiteNumber(row.predicted),
+
+      residual:
+        finiteNumber(row.residual),
+
+      /*
+       * Prefer a backend-provided deviation if available.
+       * Otherwise calculate only the display-level absolute
+       * percentage error from already supplied values.
+       */
+
+      deviation:
+        finiteNumber(row.deviation_percent)
+
+    };
+
+  })
+
+  .filter(
+    (row) =>
+      row.users !== null
+  )
+
+  .sort(
+    (a, b) =>
+      a.users - b.users
+  );
+
+const observedBody =
+qs('#uslObservedTableBody');
+
+if (observedBody) {
+
+if (!observedEntries.length) {
+
+  observedBody.innerHTML = `
+    <tr>
+      <td colspan="5" class="data-table__empty">
+        No observed-vs-model data available.
+      </td>
+    </tr>
+  `;
+
+} else {
+
+  observedBody.innerHTML =
+    observedEntries
+      .map((row) => {
+
+        let absoluteError =
+          null;
+
+
+        if (
+          row.residual !== null
+        ) {
+
+          absoluteError =
+            Math.abs(row.residual);
+
+        }
+
+
+        let deviation =
+          row.deviation;
+
+
+        /*
+         * Display-only fallback.
+         * This does not create a prediction.
+         */
+
+        if (
+          deviation === null
+          && row.observed !== null
+          && row.observed !== 0
+          && row.residual !== null
+        ) {
+
+          deviation =
+            Math.abs(
+              row.residual
+              / row.observed
+            ) * 100;
+
+        }
+
+
+        const residualText =
+          row.residual === null
+            ? '—'
+            : `${row.residual >= 0 ? '+' : ''}${formatNumber(row.residual, 2)}`;
+
+
+        return `
           <tr>
-            <td colspan="5" class="data-table__empty">
-              USL model results are unavailable.
+
+            <td class="mono">
+              ${formatInteger(row.users)}
             </td>
+
+
+            <td class="mono">
+              ${
+                row.observed === null
+                  ? '—'
+                  : formatNumber(row.observed, 2)
+              }
+            </td>
+
+
+            <td class="mono">
+              ${
+                row.predicted === null
+                  ? '—'
+                  : formatNumber(row.predicted, 2)
+              }
+            </td>
+
+
+            <td class="mono">
+
+              <span class="badge badge--neutral">
+                ${residualText}
+              </span>
+
+            </td>
+
+
+            <td class="mono">
+              ${
+                deviation === null
+                  ? '—'
+                  : fmtPercent(deviation, 1)
+              }
+            </td>
+
           </tr>
         `;
-      }
-    
-      const emptyPredictions = qs('#uslPredictionTableBody');
-      if (emptyPredictions) {
-        emptyPredictions.innerHTML = `
+
+      })
+      .join('');
+
+}
+
+}
+
+/* ==========================================================
+Residual summary
+========================================================== */
+
+const residuals =
+observedEntries
+.map((row) => row.residual)
+.filter((value) => value !== null);
+
+if (residuals.length) {
+
+const meanAbsoluteResidual =
+  residuals.reduce(
+    (sum, value) =>
+      sum + Math.abs(value),
+    0
+  ) / residuals.length;
+
+
+setBadge(
+  'uslResidualBadge',
+  `Mean |residual| ${formatNumber(meanAbsoluteResidual, 2)} req/s`,
+  'neutral'
+);
+
+} else {
+
+setBadge(
+  'uslResidualBadge',
+  'Residuals unavailable',
+  'neutral'
+);
+
+}
+
+/* ==========================================================
+Future model estimates
+========================================================== */
+
+const predictions =
+safeObject(usl.predictions);
+
+const efficiency =
+safeObject(usl.efficiency);
+
+const confidence =
+safeObject(usl.predictions_with_confidence);
+
+const predictionEntries =
+Object.entries(predictions)
+
+  .map(([key, value]) => {
+
+    const users =
+      finiteNumber(key);
+
+
+    const throughput =
+      finiteNumber(value);
+
+
+    const efficiencyValue =
+      efficiency[key] !== undefined
+        ? finiteNumber(efficiency[key])
+        : null;
+
+
+    const confidenceValue =
+      confidence[key]
+        ? safeObject(confidence[key])
+        : null;
+
+
+    return {
+
+      key,
+      users,
+      throughput,
+      efficiency: efficiencyValue,
+      confidence: confidenceValue
+
+    };
+
+  })
+
+  .filter(
+    (row) =>
+      row.users !== null
+  )
+
+  .sort(
+    (a, b) =>
+      a.users - b.users
+  );
+
+/* ==========================================================
+Prediction status
+========================================================== */
+
+if (predictionEntries.length) {
+
+setBadge(
+  'uslPredictionStatus',
+  'Model estimates',
+  'warning'
+);
+
+} else {
+
+setBadge(
+  'uslPredictionStatus',
+  'No model estimates',
+  'neutral'
+);
+
+}
+
+/* ==========================================================
+Future prediction table
+========================================================== */
+
+const predictionBody =
+qs('#uslPredictionTableBody');
+
+if (predictionBody) {
+
+if (!predictionEntries.length) {
+
+  predictionBody.innerHTML = `
+    <tr>
+      <td colspan="5" class="data-table__empty">
+        No model estimates are available.
+      </td>
+    </tr>
+  `;
+
+} else {
+
+  predictionBody.innerHTML =
+    predictionEntries
+      .map((row) => {
+
+        const ci =
+          row.confidence;
+
+
+        let confidenceText =
+          '—';
+
+
+        if (
+          ci
+          && finiteNumber(ci.lower) !== null
+          && finiteNumber(ci.upper) !== null
+        ) {
+
+          confidenceText =
+            `${formatNumber(ci.lower, 2)} – ${formatNumber(ci.upper, 2)}`;
+
+        }
+
+
+        const isExtrapolated =
+          extrapolatedPoints.some(
+            (point) =>
+              finiteNumber(point) === row.users
+          );
+
+
+        return `
           <tr>
-            <td colspan="5" class="data-table__empty">
-              USL predictions are unavailable.
+
+            <td class="mono">
+              ${formatInteger(row.users)}
             </td>
+
+
+            <td class="mono">
+
+              ${
+                row.throughput === null
+                  ? '—'
+                  : `<strong>${formatNumber(row.throughput, 2)}</strong>
+                     <span class="table-unit">req/s</span>`
+              }
+
+            </td>
+
+
+            <td class="mono">
+
+              ${
+                row.efficiency !== null
+                  ? fmtPercent(
+                      row.efficiency * 100,
+                      1
+                    )
+                  : '—'
+              }
+
+            </td>
+
+
+            <td class="mono">
+              ${confidenceText}
+            </td>
+
+
+            <td>
+
+              <span class="badge badge--${
+                isExtrapolated
+                  ? 'warning'
+                  : 'neutral'
+              }">
+
+                ${
+                  isExtrapolated
+                    ? 'Extrapolated'
+                    : 'Model estimate'
+                }
+
+              </span>
+
+            </td>
+
           </tr>
         `;
-      }
-    
-      const warningPanel = qs('#uslExtrapolationPanel');
-      if (warningPanel) warningPanel.hidden = true;
-    
-      return;
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Core parameters                                            */
-    /* ---------------------------------------------------------- */
-  
-    const parameters = usl.parameters || {};
-    const metrics = usl.usl_metrics || {};
-  
-    const sigma = Number(parameters.sigma);
-    const kappa = Number(parameters.kappa);
-    const baseline = Number(parameters.baseline_throughput);
-  
-    setText(
-      'usl-sigma',
-      fmt(sigma, 6)
-    );
-  
-    setText(
-      'usl-kappa',
-      fmt(kappa, 8)
-    );
-  
-    setText(
-      'usl-baseline',
-      fmt(baseline, 2)
-    );
-  
-    setText(
-      'usl-peak',
-      fmt(metrics.peak_throughput, 2)
-    );
-  
-    setText(
-      'usl-optimal',
-      fmtInt(metrics.optimal_users)
-    );
-  
-    setText(
-      'usl-saturation',
-      fmtInt(metrics.saturation_point)
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Observed range                                             */
-    /* ---------------------------------------------------------- */
-  
-    const observedRange = usl.observed_range || {};
-  
-    const minUsers = Number(observedRange.min_users);
-    const maxUsers = Number(observedRange.max_users);
-  
-    if (
-      Number.isFinite(minUsers)
-      && Number.isFinite(maxUsers)
-    ) {
-    
-      setText(
-        'usl-tested-range',
-        `${fmtInt(minUsers)} – ${fmtInt(maxUsers)}`
-      );
-    
-    } else if (safeLevels.length) {
-    
-      const levelUsers = safeLevels
-        .map((level) => Number(level.users))
-        .filter((value) => Number.isFinite(value));
-    
-      if (levelUsers.length) {
-      
-        setText(
-          'usl-tested-range',
-          `${fmtInt(Math.min(...levelUsers))} – ${fmtInt(Math.max(...levelUsers))}`
-        );
-      
-      }
-    
-    }
-  
-    setText(
-      'usl-observations',
-      fmtInt(usl.observations)
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Extrapolation information                                  */
-    /* ---------------------------------------------------------- */
-  
-    const extrapolatedPoints = Array.isArray(usl.extrapolated_points)
-      ? usl.extrapolated_points
-      : [];
-  
-    setText(
-      'usl-extrapolated-count',
-      fmtInt(extrapolatedPoints.length)
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Peak reliability                                           */
-    /* ---------------------------------------------------------- */
-  
-    const reliability = usl.prediction_reliability || {};
-  
-    const peakInRange = reliability.peak_observed_in_tested_range;
-  
-    if (peakInRange === true) {
-    
-      setText(
-        'usl-peak-range',
-        'Yes'
-      );
-    
-    } else if (peakInRange === false) {
-    
-      setText(
-        'usl-peak-range',
-        'No'
-      );
-    
-    } else {
-    
-      setText(
-        'usl-peak-range',
-        'Not finite'
-      );
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Fit quality                                                */
-    /* ---------------------------------------------------------- */
-  
-    const fit = usl.fit_quality || {};
-    const r2 = Number(fit.r2);
-    const rmse = Number(fit.rmse);
-  
-    setText(
-      'usl-r2',
-      Number.isFinite(r2)
-        ? r2.toFixed(3)
-        : '—'
-    );
-  
-    setText(
-      'usl-rmse',
-      Number.isFinite(rmse)
-        ? fmt(rmse, 2)
-        : '—'
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* LOO cross-validation                                       */
-    /* ---------------------------------------------------------- */
-  
-    const loo = reliability.loo_cv || {};
-  
-    if (
-      loo.available
-      && Number.isFinite(Number(loo.loo_r2))
-    ) {
-    
-      setText(
-        'usl-loo-r2',
-        Number(loo.loo_r2).toFixed(3)
-      );
-    
-    } else {
-    
-      setText(
-        'usl-loo-r2',
-        'N/A'
-      );
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Fit status                                                  */
-    /* ---------------------------------------------------------- */
-  
-    const fitStatus = usl.fit_quality_status || 'Unknown';
-  
-    let fitVariant = 'neutral';
-  
-    switch (fitStatus.toLowerCase()) {
-    
-      case 'excellent':
-        fitVariant = 'success';
-        break;
-    
-      case 'good':
-        fitVariant = 'success';
-        break;
-    
-      case 'moderate':
-        fitVariant = 'warning';
-        break;
-    
-      case 'poor':
-        fitVariant = 'danger';
-        break;
-    
-      default:
-        fitVariant = 'neutral';
-        break;
-    
-    }
-  
-    setBadge(
-      'uslFitStatus',
-      `Fit: ${fitStatus}`,
-      fitVariant
-    );
-  
-    setBadge(
-      'uslFitStatusSecondary',
-      fitStatus,
-      fitVariant
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Fit summary                                                */
-    /* ---------------------------------------------------------- */
-  
-    let fitSummary = 'Fit quality could not be determined.';
-  
-    if (fitStatus === 'Excellent') {
-    
-      fitSummary =
-        'The USL curve explains the measured throughput very closely.';
-    
-    } else if (fitStatus === 'Good') {
-    
-      fitSummary =
-        'The USL curve provides a strong explanation of the measured throughput.';
-    
-    } else if (fitStatus === 'Moderate') {
-    
-      fitSummary =
-        'The USL curve captures the general scaling trend, but uncertainty remains.';
-    
-    } else if (fitStatus === 'Poor') {
-    
-      fitSummary =
-        'The measured throughput does not closely follow the fitted USL curve.';
-    
-    }
-  
-    setText(
-      'usl-fit-summary',
-      fitSummary
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Prediction reliability                                    */
-    /* ---------------------------------------------------------- */
-  
-    const reliabilityStatus =
-      reliability.status || 'unknown';
-  
-    const usableForExtrapolation =
-      reliability.usable_for_extrapolation === true;
-  
-    let reliabilityVariant = 'warning';
-  
-    if (usableForExtrapolation) {
-      reliabilityVariant = 'success';
-    }
-  
-    if (reliabilityStatus === 'low') {
-      reliabilityVariant = 'warning';
-    }
-  
-    setBadge(
-      'uslReliabilityBadge',
-      `Extrapolation: ${reliabilityStatus}`,
-      reliabilityVariant
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Scalability classification                                 */
-    /* ---------------------------------------------------------- */
-  
-    const classification =
-      usl.scalability_classification || {};
-  
-    const classificationName =
-      classification.classification || 'Unknown';
-  
-    const classificationDescription =
-      classification.description ||
-      'No scalability interpretation is available.';
-  
-    let classificationVariant = 'neutral';
-  
-    const classificationLower =
-      classificationName.toLowerCase();
-  
-    if (classificationLower.includes('linear')) {
-    
-      classificationVariant = 'success';
-    
-    } else if (classificationLower.includes('sublinear')) {
-    
-      classificationVariant = 'warning';
-    
-    } else if (classificationLower.includes('retrograde')) {
-    
-      classificationVariant = 'danger';
-    
-    }
-  
-    setBadge(
-      'uslClassification',
-      classificationName,
-      classificationVariant
-    );
-  
-    setText(
-      'uslClassificationDescription',
-      classificationDescription
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Parameter interpretation                                   */
-    /* ---------------------------------------------------------- */
-  
-    const interpretation =
-      usl.parameter_interpretation || {};
-  
-    setText(
-      'uslSigmaInterpretation',
-      interpretation.sigma ||
-        'Contention interpretation unavailable.'
-    );
-  
-    setText(
-      'uslKappaInterpretation',
-      interpretation.kappa ||
-        'Coherency interpretation unavailable.'
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Parameter uncertainty                                      */
-    /* ---------------------------------------------------------- */
-  
-    const uncertainty =
-      usl.parameter_uncertainty || {};
-  
-    setText(
-      'usl-sigma-stderr',
-      fmt(uncertainty.sigma_stderr, 8)
-    );
-  
-    setText(
-      'usl-kappa-stderr',
-      fmt(uncertainty.kappa_stderr, 8)
-    );
-  
-    const kappaRelativeUncertainty =
-      reliability.kappa_relative_uncertainty;
-  
-    if (
-      kappaRelativeUncertainty !== null
-      && kappaRelativeUncertainty !== undefined
-      && Number.isFinite(Number(kappaRelativeUncertainty))
-    ) {
-    
-      setText(
-        'usl-kappa-relative-uncertainty',
-        fmtPercent(
-          Number(kappaRelativeUncertainty) * 100,
-          1
+
+      })
+      .join('');
+
+}
+
+}
+
+/* ==========================================================
+Extrapolation warning
+========================================================== */
+
+const warningPanel =
+qs('#uslExtrapolationPanel');
+
+if (warningPanel) {
+
+const warningText =
+  typeof usl.extrapolation_warning === 'string'
+    ? usl.extrapolation_warning
+    : 'Model estimates extend beyond the measured load range.';
+
+
+if (
+  extrapolatedPoints.length > 0
+) {
+
+  warningPanel.hidden = false;
+
+
+  setText(
+    'uslExtrapolationWarning',
+    warningText
+  );
+
+} else {
+
+  warningPanel.hidden = true;
+
+}
+
+}
+
+/* ==========================================================
+Summary
+========================================================== */
+
+setText(
+'uslSummaryClassification',
+classificationName
+);
+
+const optimalUsers =
+finiteNumber(metrics.optimal_users);
+
+setText(
+'uslSummaryOptimal',
+optimalUsers === null
+? 'Unavailable'
+: `${formatInteger(optimalUsers)} users`
+);
+
+const peakThroughput =
+finiteNumber(metrics.peak_throughput);
+
+setText(
+'uslSummaryPeak',
+peakThroughput === null
+? 'Unavailable'
+: `${formatNumber(peakThroughput, 2)} req/s`
+);
+
+setText(
+'uslSummaryReliability',
+reliabilityStatus === 'unknown'
+? 'Unknown'
+: reliabilityStatus.charAt(0).toUpperCase()
++ reliabilityStatus.slice(1)
+);
+
+/* ==========================================================
+Chart data
+========================================================== */
+
+const measuredRows =
+safeLevels
+
+  .map((level) => ({
+
+    users:
+      finiteNumber(level.users),
+
+    throughput:
+      finiteNumber(level.mean_throughput)
+
+  }))
+
+  .filter(
+    (row) =>
+      row.users !== null
+      && row.throughput !== null
+  )
+
+  .sort(
+    (a, b) =>
+      a.users - b.users
+  );
+
+const fittedRows =
+observedEntries
+
+  .map((row) => ({
+
+    users:
+      row.users,
+
+    throughput:
+      row.predicted
+
+  }))
+
+  .filter(
+    (row) =>
+      row.users !== null
+      && row.throughput !== null
+  )
+
+  .sort(
+    (a, b) =>
+      a.users - b.users
+  );
+
+const futureRows =
+predictionEntries
+
+  .map((row) => ({
+
+    users:
+      row.users,
+
+    throughput:
+      row.throughput,
+
+    confidence:
+      row.confidence
+
+  }))
+
+  .filter(
+    (row) =>
+      row.users !== null
+      && row.throughput !== null
+  )
+
+  .sort(
+    (a, b) =>
+      a.users - b.users
+  );
+
+/*
+
+* The chart uses only actual measured points and actual backend
+* model outputs.
+*
+* It does not create intermediate predictions.
+  */
+
+const chartUsers =
+Array.from(
+new Set(
+
+    measuredRows
+      .map((row) => row.users)
+
+      .concat(
+        futureRows.map(
+          (row) => row.users
         )
-      );
-    
-    } else {
-    
-      setText(
-        'usl-kappa-relative-uncertainty',
-        'N/A'
-      );
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Uncertainty note                                           */
-    /* ---------------------------------------------------------- */
-  
-    let uncertaintyNote =
-      'Parameter uncertainty assessment is not available.';
-  
-    if (
-      kappaRelativeUncertainty !== null
-      && Number.isFinite(Number(kappaRelativeUncertainty))
-    ) {
-    
-      const relative =
-        Number(kappaRelativeUncertainty);
-    
-      if (relative > 0.5) {
-      
-        uncertaintyNote =
-          'κ has high relative uncertainty. The coherency parameter and the derived optimal-user/saturation estimates should therefore be treated as directional rather than precise.';
-      
-      } else {
-      
-        uncertaintyNote =
-          'The current measurements provide a measurable estimate of the USL coherency parameter.';
-      
-      }
-    
-    }
-  
-    setText(
-      'uslUncertaintyNote',
-      uncertaintyNote
+      )
+
+  )
+)
+.sort(
+  (a, b) => a - b
+);
+
+const chartLabels =
+chartUsers.map(
+(users) =>
+formatInteger(users)
+);
+
+/* ==========================================================
+Measured data
+========================================================== */
+
+const measuredChartData =
+chartUsers.map((users) => {
+
+  const row =
+    measuredRows.find(
+      (item) =>
+        item.users === users
     );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Observed vs predicted table                                */
-    /* ---------------------------------------------------------- */
-  
-    const observedVsPredicted =
-      usl.observed_vs_predicted || {};
-  
-    const observedEntries =
-      Object.entries(observedVsPredicted)
-        .map(([key, value]) => {
-        
-          const users = Number(key);
-          const row = value || {};
-        
-          const observed =
-            Number(row.observed);
-        
-          const predicted =
-            Number(row.predicted);
-        
-          const residual =
-            Number(row.residual);
-        
-          let deviation = null;
-        
-          if (
-            Number.isFinite(observed)
-            && observed !== 0
-            && Number.isFinite(residual)
-          ) {
-          
-            deviation =
-              Math.abs(residual / observed) * 100;
-          
+
+
+  return row
+    ? row.throughput
+    : null;
+
+});
+
+/* ==========================================================
+Model data
+========================================================== */
+
+const modelChartData =
+chartUsers.map((users) => {
+
+  const fitted =
+    fittedRows.find(
+      (item) =>
+        item.users === users
+    );
+
+
+  if (fitted) {
+
+    return fitted.throughput;
+
+  }
+
+
+  const future =
+    futureRows.find(
+      (item) =>
+        item.users === users
+    );
+
+
+  return future
+    ? future.throughput
+    : null;
+
+});
+
+/* ==========================================================
+Confidence interval
+========================================================== */
+
+const lowerConfidenceData =
+chartUsers.map((users) => {
+
+  const future =
+    futureRows.find(
+      (item) =>
+        item.users === users
+    );
+
+
+  if (
+    future
+    && future.confidence
+    && finiteNumber(
+      future.confidence.lower
+    ) !== null
+  ) {
+
+    return finiteNumber(
+      future.confidence.lower
+    );
+
+  }
+
+
+  return null;
+
+});
+
+const upperConfidenceData =
+chartUsers.map((users) => {
+
+  const future =
+    futureRows.find(
+      (item) =>
+        item.users === users
+    );
+
+
+  if (
+    future
+    && future.confidence
+    && finiteNumber(
+      future.confidence.upper
+    ) !== null
+  ) {
+
+    return finiteNumber(
+      future.confidence.upper
+    );
+
+  }
+
+
+  return null;
+
+});
+
+/* ==========================================================
+Chart
+========================================================== */
+
+makeOrUpdateChart(
+
+'usl',
+
+'uslChart',
+
+{
+
+  type: 'line',
+
+  data: {
+
+    labels: chartLabels,
+
+    datasets: [
+
+      /*
+       * Actual measurements.
+       */
+
+      Object.assign(
+
+        measuredDataset(
+          'Measured throughput',
+          measuredChartData
+        ),
+
+        {
+
+          spanGaps: false,
+
+          pointRadius: 4,
+
+          pointHoverRadius: 6,
+
+          tension: 0
+
+        }
+
+      ),
+
+
+      /*
+       * Backend USL model values.
+       *
+       * No artificial smoothing is applied.
+       */
+
+      Object.assign(
+
+        predictedDataset(
+          'USL model',
+          modelChartData
+        ),
+
+        {
+
+          spanGaps: false,
+
+          pointRadius: 3,
+
+          pointHoverRadius: 6,
+
+          tension: 0
+
+        }
+
+      ),
+
+
+      /*
+       * Lower model interval.
+       */
+
+      Object.assign(
+
+        predictedDataset(
+          '95% model interval — lower',
+          lowerConfidenceData
+        ),
+
+        {
+
+          borderDash: [4, 5],
+
+          pointRadius: 0,
+
+          tension: 0,
+
+          spanGaps: false
+
+        }
+
+      ),
+
+
+      /*
+       * Upper model interval.
+       */
+
+      Object.assign(
+
+        predictedDataset(
+          '95% model interval — upper',
+          upperConfidenceData
+        ),
+
+        {
+
+          borderDash: [4, 5],
+
+          pointRadius: 0,
+
+          tension: 0,
+
+          spanGaps: false,
+
+          fill: '-1',
+
+          backgroundColor:
+            'rgba(255,255,255,0.04)'
+
+        }
+
+      )
+
+    ]
+
+  },
+
+
+  options:
+
+    baseChartOptions({
+
+      plugins: {
+
+        legend: {
+
+          display: true,
+
+          labels: {
+
+            color:
+              cssVar('--ink-muted'),
+
+            font: {
+
+              family: 'Inter',
+
+              size: 11.5
+
+            }
+
           }
-        
-          return {
-            users,
-            observed,
-            predicted,
-            residual,
-            deviation,
-          };
-        
-        })
-        .filter(
-          (row) => Number.isFinite(row.users)
-        )
-        .sort(
-          (a, b) => a.users - b.users
-        );
-      
-      
-    const observedBody =
-      qs('#uslObservedTableBody');
-      
-    if (observedBody) {
-    
-      if (!observedEntries.length) {
-      
-        observedBody.innerHTML = `
-          <tr>
-            <td colspan="5" class="data-table__empty">
-              No observed-vs-predicted data available.
-            </td>
-          </tr>
-        `;
-      
-      } else {
-      
-        observedBody.innerHTML =
-          observedEntries
-            .map((row) => {
-            
-              const residualVariant =
-                Number.isFinite(row.residual)
-                  ? row.residual >= 0
-                    ? 'success'
-                    : 'warning'
-                  : 'neutral';
-            
-              const residualText =
-                Number.isFinite(row.residual)
-                  ? `${row.residual >= 0 ? '+' : ''}${fmt(row.residual, 2)}`
-                  : '—';
-            
-              return `
-                <tr>
-            
-                  <td class="mono">
-                    ${fmtInt(row.users)}
-                  </td>
-            
-                  <td class="mono">
-                    ${fmt(row.observed, 2)}
-                  </td>
-            
-                  <td class="mono">
-                    ${fmt(row.predicted, 2)}
-                  </td>
-            
-                  <td class="mono">
-                    <span class="badge badge--${residualVariant}">
-                      ${residualText}
-                    </span>
-                  </td>
-            
-                  <td class="mono">
-                    ${
-                      Number.isFinite(row.deviation)
-                        ? fmtPercent(row.deviation, 1)
-                        : '—'
-                    }
-                  </td>
-            
-                </tr>
-              `;
-            
-            })
-            .join('');
-          
-      }
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Overall residual summary                                   */
-    /* ---------------------------------------------------------- */
-  
-    if (observedEntries.length) {
-    
-      const absoluteResiduals =
-        observedEntries
-          .map((row) => Math.abs(row.residual))
-          .filter(Number.isFinite);
-    
-      const meanAbsoluteResidual =
-        absoluteResiduals.length
-          ? absoluteResiduals.reduce(
-              (sum, value) => sum + value,
-              0
-            ) / absoluteResiduals.length
-          : null;
-          
-      setBadge(
-        'uslResidualBadge',
-        meanAbsoluteResidual !== null
-          ? `Mean |residual| ${fmt(meanAbsoluteResidual, 2)} req/s`
-          : 'Residuals available',
-        'neutral'
-      );
-    
-    } else {
-    
-      setBadge(
-        'uslResidualBadge',
-        'No residual data',
-        'neutral'
-      );
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Future prediction table                                   */
-    /* ---------------------------------------------------------- */
-  
-    const predictions =
-      usl.predictions || {};
-  
-    const efficiency =
-      usl.efficiency || {};
-  
-    const confidence =
-      usl.predictions_with_confidence || {};
-  
-  
-    /*
-    * IMPORTANT:
-    *
-    * Do NOT convert the JSON object keys to numbers and then use
-    * predictions[number].
-    *
-    * Flask serializes Python float dictionary keys such as:
-    *
-    *     1000.0
-    *
-    * into JSON object keys such as:
-    *
-    *     "1000.0"
-    *
-    * Therefore Object.entries() is used throughout.
-    */
-  
-    const predictionEntries =
-      Object.entries(predictions)
-        .map(([key, value]) => {
-        
-          const users =
-            Number(key);
-        
-          const throughput =
-            Number(value);
-        
-          const efficiencyValue =
-            efficiency[key] !== undefined
-              ? Number(efficiency[key])
-              : null;
-        
-          const confidenceValue =
-            confidence[key] || null;
-        
-          return {
-            key,
-            users,
-            throughput,
-            efficiency: efficiencyValue,
-            confidence: confidenceValue,
-          };
-        
-        })
-        .filter(
-          (row) => Number.isFinite(row.users)
-        )
-        .sort(
-          (a, b) => a.users - b.users
-        );
-      
-      
-    const predictionBody =
-      qs('#uslPredictionTableBody');
-      
-    if (predictionBody) {
-    
-      if (!predictionEntries.length) {
-      
-        predictionBody.innerHTML = `
-          <tr>
-            <td colspan="5" class="data-table__empty">
-              No predictions available.
-            </td>
-          </tr>
-        `;
-      
-      } else {
-      
-        predictionBody.innerHTML =
-          predictionEntries
-            .map((row) => {
-            
-              const ci =
-                row.confidence;
-            
-              let confidenceText = '—';
-            
-              if (
-                ci
-                && Number.isFinite(Number(ci.lower))
-                && Number.isFinite(Number(ci.upper))
-              ) {
-              
-                confidenceText =
-                  `${fmt(ci.lower, 2)} – ${fmt(ci.upper, 2)}`;
-              
-              }
-            
-              const isExtrapolated =
-                extrapolatedPoints.some(
-                  (point) =>
-                    Number(point) === row.users
-                );
-              
-              return `
-                <tr>
-              
-                  <td class="mono">
-                    ${fmtInt(row.users)}
-                  </td>
-              
-                  <td class="mono">
-                    <strong>
-                      ${fmt(row.throughput, 2)}
-                    </strong>
-                    <span class="table-unit">
-                      req/s
-                    </span>
-                  </td>
-              
-                  <td class="mono">
-                    ${
-                      row.efficiency !== null
-                        && Number.isFinite(row.efficiency)
-                        ? fmtPercent(
-                            row.efficiency * 100,
-                            1
-                          )
-                        : '—'
-                    }
-                  </td>
-                        
-                  <td class="mono">
-                    ${confidenceText}
-                  </td>
-                        
-                  <td>
-                    <span class="badge badge--${
-                      isExtrapolated
-                        ? 'warning'
-                        : 'neutral'
-                    }">
-                      ${
-                        isExtrapolated
-                          ? 'Extrapolated'
-                          : 'Tested'
-                      }
-                    </span>
-                  </td>
-                        
-                </tr>
-              `;
-                        
-            })
-            .join('');
-          
-      }
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Extrapolation warning                                     */
-    /* ---------------------------------------------------------- */
-  
-    const warningPanel =
-      qs('#uslExtrapolationPanel');
-  
-    if (warningPanel) {
-    
-      if (
-        extrapolatedPoints.length
-        && usl.extrapolation_warning
-      ) {
-      
-        warningPanel.hidden = false;
-      
-        setText(
-          'uslExtrapolationWarning',
-          usl.extrapolation_warning
-        );
-      
-      } else {
-      
-        warningPanel.hidden = true;
-      
-      }
-    
-    }
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Summary cards                                              */
-    /* ---------------------------------------------------------- */
-  
-    setText(
-      'uslSummaryClassification',
-      classificationName
-    );
-  
-    setText(
-      'uslSummaryOptimal',
-      Number.isFinite(Number(metrics.optimal_users))
-        ? `${fmtInt(metrics.optimal_users)} users`
-        : 'Not finite'
-    );
-  
-    setText(
-      'uslSummaryPeak',
-      Number.isFinite(Number(metrics.peak_throughput))
-        ? `${fmt(metrics.peak_throughput, 2)} req/s`
-        : '—'
-    );
-  
-    setText(
-      'uslSummaryReliability',
-      reliabilityStatus
-        ? reliabilityStatus.charAt(0).toUpperCase()
-          + reliabilityStatus.slice(1)
-        : 'Unknown'
-    );
-  
-  
-    /* ---------------------------------------------------------- */
-    /* Chart data                                                 */
-    /* ---------------------------------------------------------- */
-  
-    /*
-    * IMPORTANT:
-    *
-    * The old implementation used `rows` here even after the table
-    * was changed to `predictionEntries`.
-    *
-    * This implementation NEVER references `rows`.
-    */
-  
-    const measuredRows =
-      safeLevels
-        .map((level) => ({
-          users: Number(level.users),
-          throughput: Number(level.mean_throughput),
-        }))
-        .filter(
-          (row) =>
-            Number.isFinite(row.users)
-            && Number.isFinite(row.throughput)
-        )
-        .sort(
-          (a, b) => a.users - b.users
-        );
-      
-      
-    const fittedRows =
-      observedEntries
-        .map((row) => ({
-          users: row.users,
-          throughput: row.predicted,
-        }))
-        .filter(
-          (row) =>
-            Number.isFinite(row.users)
-            && Number.isFinite(row.throughput)
-        )
-        .sort(
-          (a, b) => a.users - b.users
-        );
-      
-      
-    const futureRows =
-      predictionEntries
-        .map((row) => ({
-          users: row.users,
-          throughput: row.throughput,
-          confidence: row.confidence,
-        }))
-        .filter(
-          (row) =>
-            Number.isFinite(row.users)
-            && Number.isFinite(row.throughput)
-        )
-        .sort(
-          (a, b) => a.users - b.users
-        );
-      
-      
-    /*
-    * Create one ordered user axis.
-    *
-    * Example:
-    *
-    * 20, 50, 100, 200, 300, 500, 1000, 2000, 5000
-    */
-      
-    const chartUsers =
-      Array.from(
-        new Set(
-          measuredRows
-            .map((row) => row.users)
-            .concat(
-              futureRows.map((row) => row.users)
-            )
-        )
-      ).sort(
-        (a, b) => a - b
-      );
-    
-    
-    const chartLabels =
-      chartUsers.map(
-        (users) => fmtInt(users)
-      );
-    
-    
-    /* ---------------------------------------------------------- */
-    /* Measured chart data                                        */
-    /* ---------------------------------------------------------- */
-    
-    const measuredChartData =
-      chartUsers.map((users) => {
-      
-        const row =
-          measuredRows.find(
-            (item) => item.users === users
-          );
-        
-        return row
-          ? row.throughput
-          : null;
-        
-      });
-    
-    
-    /* ---------------------------------------------------------- */
-    /* Fitted + future USL curve                                 */
-    /* ---------------------------------------------------------- */
-    
-    const fittedChartData =
-      chartUsers.map((users) => {
-      
-        const fitted =
-          fittedRows.find(
-            (item) => item.users === users
-          );
-        
-        if (fitted) {
-          return fitted.throughput;
-        }
-      
-        const future =
-          futureRows.find(
-            (item) => item.users === users
-          );
-        
-        return future
-          ? future.throughput
-          : null;
-        
-      });
-    
-    
-    /* ---------------------------------------------------------- */
-    /* Confidence interval                                       */
-    /* ---------------------------------------------------------- */
-    
-    const lowerConfidenceData =
-      chartUsers.map((users) => {
-      
-        const future =
-          futureRows.find(
-            (item) => item.users === users
-          );
-        
-        if (
-          future
-          && future.confidence
-          && Number.isFinite(Number(future.confidence.lower))
-        ) {
-        
-          return Number(
-            future.confidence.lower
-          );
-        
-        }
-      
-        return null;
-      
-      });
-    
-    
-    const upperConfidenceData =
-      chartUsers.map((users) => {
-      
-        const future =
-          futureRows.find(
-            (item) => item.users === users
-          );
-        
-        if (
-          future
-          && future.confidence
-          && Number.isFinite(Number(future.confidence.upper))
-        ) {
-        
-          return Number(
-            future.confidence.upper
-          );
-        
-        }
-      
-        return null;
-      
-      });
-    
-    
-    /* ---------------------------------------------------------- */
-    /* Create/update USL chart                                   */
-    /* ---------------------------------------------------------- */
-    
-    makeOrUpdateChart(
-      'usl',
-      'uslChart',
-      {
-        type: 'line',
-      
-        data: {
-        
-          labels: chartLabels,
-        
-          datasets: [
-          
-            /*
-            * Measured throughput
-            */
-            Object.assign(
-              measuredDataset(
-                'Measured throughput',
-                measuredChartData
-              ),
-              {
-                spanGaps: false,
-                pointRadius: 4,
-                pointHoverRadius: 6,
-              }
-            ),
-          
-            /*
-            * Fitted USL curve + extrapolation
-            */
-            Object.assign(
-              predictedDataset(
-                'USL fitted / predicted',
-                fittedChartData
-              ),
-              {
-                spanGaps: true,
-                pointRadius: 3,
-                pointHoverRadius: 6,
-                tension: 0.25,
-              }
-            ),
-          
-            /*
-            * Lower confidence boundary
-            */
-            Object.assign(
-              predictedDataset(
-                '95% CI lower',
-                lowerConfidenceData
-              ),
-              {
-                borderDash: [4, 5],
-                pointRadius: 0,
-                tension: 0.25,
-              }
-            ),
-          
-            /*
-            * Upper confidence boundary.
-            *
-            * `fill: '-1'` fills the area down to the previous
-            * confidence-boundary dataset.
-            */
-            Object.assign(
-              predictedDataset(
-                '95% CI upper',
-                upperConfidenceData
-              ),
-              {
-                borderDash: [4, 5],
-                pointRadius: 0,
-                tension: 0.25,
-                fill: '-1',
-                backgroundColor: 'rgba(255,255,255,0.04)',
-              }
-            ),
-          
-          ],
-        
+
         },
-      
-        options: baseChartOptions({
-        
+
+        tooltip:
+          baseChartOptions()
+            .plugins
+            .tooltip
+
+      },
+
+
+      scales: {
+
+        x: Object.assign(
+
+          {},
+
+          baseChartOptions()
+            .scales
+            .x,
+
+          {
+
+            title: {
+
+              display: true,
+
+              text:
+                'Concurrent users',
+
+              color:
+                cssVar('--ink-muted')
+
+            }
+
+          }
+
+        ),
+
+
+        y: Object.assign(
+
+          {},
+
+          baseChartOptions()
+            .scales
+            .y,
+
+          {
+
+            title: {
+
+              display: true,
+
+              text:
+                'Throughput (req/s)',
+
+              color:
+                cssVar('--ink-muted')
+
+            }
+
+          }
+
+        )
+
+      }
+
+    })
+
+}
+
+);
+
+}
+
+/* ---- Little's Law -------------------------------------------- */
+
+function renderLittlesLaw(littleLaw, levels) {
+
+  /*
+   * Little's Law frontend renderer
+   *
+   * Core relationship:
+   *
+   *     L = λ × W
+   *
+   * where:
+   *
+   *     L = average number of requests/jobs in the system
+   *     λ = measured throughput in requests per second
+   *     W = average response time in seconds
+   *
+   * For a closed workload:
+   *
+   *     N = X × (R + Z)
+   *
+   * where:
+   *
+   *     N = derived closed-workload concurrency
+   *     X = throughput
+   *     R = response time
+   *     Z = think time
+   *
+   * In the current model:
+   *
+   *     Z = 0
+   *
+   * Therefore:
+   *
+   *     N = X × R
+   *       = L
+   *
+   * Important:
+   *
+   *     L is NOT application capacity.
+   *     Derived closed-workload N is NOT safe user capacity.
+   *
+   * Capacity decisions are made later using the combined
+   * mathematical engine:
+   *
+   *     USL
+   *     Little's Law
+   *     Queueing
+   *     Bottleneck
+   *     SLO
+   *     Capacity
+   *     Scalability
+   *
+   */
+
+
+  /* ---------------------------------------------------------- */
+  /* Safe input                                                 */
+  /* ---------------------------------------------------------- */
+
+  const rows =
+    littleLaw && Array.isArray(littleLaw.levels)
+      ? littleLaw.levels
+      : [];
+
+  const safeLevels =
+    Array.isArray(levels)
+      ? levels
+      : [];
+
+
+  /* ---------------------------------------------------------- */
+  /* Empty state                                                */
+  /* ---------------------------------------------------------- */
+
+  if (!rows.length) {
+
+    setBadge(
+      'littleLawOverallStatus',
+      'No data',
+      'neutral'
+    );
+
+    setBadge(
+      'littleLawTableStatus',
+      'Unavailable',
+      'neutral'
+    );
+
+    setText('littleLawPeakArrival', '—');
+    setText('littleLawPeakResponse', '—');
+    setText('littleLawPeakOccupancy', '—');
+    setText('littleLawHighestUsers', '—');
+
+    setText('littleLawLambda', '—');
+    setText('littleLawW', '—');
+    setText('littleLawL', '—');
+    setText('littleLawUsers', '—');
+    setText('littleLawMaxL', '—');
+
+    setText(
+      'littleLawOccupancyDescription',
+      'No Little’s Law occupancy information is available.'
+    );
+
+    setText(
+      'littleLawResponseDescription',
+      'No response-time information is available.'
+    );
+
+    setText(
+      'littleLawArrivalDescription',
+      'No throughput information is available.'
+    );
+
+    setText(
+      'littleLawLInterpretation',
+      'No Little’s Law result is available.'
+    );
+
+    setText(
+      'littleLawLambdaInterpretation',
+      'No throughput result is available.'
+    );
+
+    setText(
+      'littleLawWInterpretation',
+      'No response-time result is available.'
+    );
+
+    setText(
+      'littleLawHighOccupancy',
+      '—'
+    );
+
+    setText(
+      'littleLawCriticalOccupancy',
+      '—'
+    );
+
+    const body = qs('#littlesLawTableBody');
+
+    if (body) {
+
+      body.innerHTML = `
+        <tr>
+          <td colspan="6" class="data-table__empty">
+            No Little's Law data available.
+          </td>
+        </tr>
+      `;
+
+    }
+
+    return;
+  }
+
+
+  /* ---------------------------------------------------------- */
+  /* Normalize backend rows                                     */
+  /* ---------------------------------------------------------- */
+
+  const normalizedRows =
+    rows
+      .map((row, index) => {
+
+        const r = row || {};
+
+
+        /* ---------------------------------------------------- */
+        /* Load level / concurrent users                        */
+        /* ---------------------------------------------------- */
+
+        let users =
+          Number(
+            r.users ??
+            r.load_users ??
+            r.concurrent_users
+          );
+
+        if (!Number.isFinite(users)) {
+
+          users =
+            Number(
+              safeLevels[index]?.users
+            );
+
+        }
+
+
+        /* ---------------------------------------------------- */
+        /* Throughput                                            */
+        /* ---------------------------------------------------- */
+
+        /*
+         * Current backend may expose:
+         *
+         *     throughput
+         *     arrival_rate
+         *     lambda
+         *
+         * The application currently feeds measured Locust
+         * throughput into Little's Law.
+         */
+
+        const arrivalRate =
+          Number(
+            r.throughput ??
+            r.arrival_rate ??
+            r.lambda
+          );
+
+
+        /* ---------------------------------------------------- */
+        /* Average response time                                */
+        /* ---------------------------------------------------- */
+
+        /*
+         * Backend response time is normalized to seconds
+         * by the mathematical engine.
+         */
+
+        const responseTime =
+          Number(
+            r.response_time ??
+            r.average_response_time
+          );
+
+
+        /* ---------------------------------------------------- */
+        /* Little's Law L                                       */
+        /* ---------------------------------------------------- */
+
+        /*
+         * Backend key:
+         *
+         *     requests_in_system
+         *
+         * Fallbacks are retained for compatibility.
+         */
+
+        const requestsInSystem =
+          Number(
+            r.requests_in_system ??
+            r.concurrent_requests ??
+            r.L
+          );
+
+
+        /* ---------------------------------------------------- */
+        /* Derived closed-workload N                             */
+        /* ---------------------------------------------------- */
+
+        /*
+         * Current mathematical engine uses:
+         *
+         *     predicted_users
+         *
+         * This value represents:
+         *
+         *     N = X × (R + Z)
+         *
+         * With the current assumption Z = 0:
+         *
+         *     N = X × R = L
+         *
+         * It is NOT application capacity.
+         */
+
+        const derivedClosedWorkloadN =
+          Number(
+            r.predicted_closed_concurrency ??
+            r.predicted_users
+          );
+
+
+        /* ---------------------------------------------------- */
+        /* Observed concurrency                                 */
+        /* ---------------------------------------------------- */
+
+        const observedConcurrency =
+          Number(
+            r.observed_concurrency ??
+            users
+          );
+
+
+        /* ---------------------------------------------------- */
+        /* Classification                                      */
+        /* ---------------------------------------------------- */
+
+        /*
+         * Classification describes workload/occupancy behavior.
+         *
+         * It must NOT be interpreted as:
+         *
+         *     safe capacity
+         *     maximum users
+         *     overload limit
+         */
+
+        const classification =
+          r.load_classification ??
+          r.classification ??
+          '—';
+
+
+        /* ---------------------------------------------------- */
+        /* Per-load-level signals                               */
+        /* ---------------------------------------------------- */
+
+        const signals =
+          r.signals || {};
+
+
+        return {
+
+          original: r,
+
+          index,
+
+          users,
+
+          observedConcurrency,
+
+          arrivalRate,
+
+          responseTime,
+
+          requestsInSystem,
+
+          derivedClosedWorkloadN,
+
+          classification,
+
+          highOccupancy:
+            signals.high_occupancy,
+
+          criticalOccupancy:
+            signals.critical_occupancy,
+
+          occupancyTrend:
+            signals.occupancy_trend,
+
+          responseTimeTrend:
+            signals.response_time_trend,
+
+          arrivalRateTrend:
+            signals.arrival_rate_trend,
+
+          queueGrowth:
+            signals.queue_growth
+
+        };
+
+      })
+      .filter(
+        (row) =>
+          Number.isFinite(row.users) ||
+          Number.isFinite(row.arrivalRate) ||
+          Number.isFinite(row.requestsInSystem)
+      );
+
+
+  if (!normalizedRows.length) {
+    return;
+  }
+
+
+  /* ---------------------------------------------------------- */
+  /* Sort by workload                                           */
+  /* ---------------------------------------------------------- */
+
+  normalizedRows.sort(
+    (a, b) => {
+
+      if (
+        Number.isFinite(a.users) &&
+        Number.isFinite(b.users)
+      ) {
+
+        return a.users - b.users;
+
+      }
+
+      return a.index - b.index;
+
+    }
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Summary values                                             */
+  /* ---------------------------------------------------------- */
+
+  const validArrivalRates =
+    normalizedRows
+      .map(row => row.arrivalRate)
+      .filter(Number.isFinite);
+
+
+  const validResponseTimes =
+    normalizedRows
+      .map(row => row.responseTime)
+      .filter(Number.isFinite);
+
+
+  const validLValues =
+    normalizedRows
+      .map(row => row.requestsInSystem)
+      .filter(Number.isFinite);
+
+
+  const validDerivedNValues =
+    normalizedRows
+      .map(row => row.derivedClosedWorkloadN)
+      .filter(Number.isFinite);
+
+
+  const peakArrival =
+    validArrivalRates.length
+      ? Math.max(...validArrivalRates)
+      : null;
+
+
+  const peakResponse =
+    validResponseTimes.length
+      ? Math.max(...validResponseTimes)
+      : null;
+
+
+  const peakL =
+    validLValues.length
+      ? Math.max(...validLValues)
+      : null;
+
+
+  const peakDerivedN =
+    validDerivedNValues.length
+      ? Math.max(...validDerivedNValues)
+      : null;
+
+
+  const highestUsers =
+    normalizedRows
+      .map(row => row.users)
+      .filter(Number.isFinite)
+      .reduce(
+        (max, value) => Math.max(max, value),
+        -Infinity
+      );
+
+
+  /* ---------------------------------------------------------- */
+  /* Top metric cards                                           */
+  /* ---------------------------------------------------------- */
+
+  setText(
+    'littleLawPeakArrival',
+    Number.isFinite(peakArrival)
+      ? `${fmt(peakArrival, 2)} req/s`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawPeakResponse',
+    Number.isFinite(peakResponse)
+      ? `${fmt(peakResponse, 4)} s`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawPeakOccupancy',
+    Number.isFinite(peakL)
+      ? fmt(peakL, 2)
+      : '—'
+  );
+
+
+  setText(
+    'littleLawHighestUsers',
+    Number.isFinite(highestUsers)
+      ? fmtInt(highestUsers)
+      : '—'
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Formula values                                             */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * These use the peak measured values so the existing HTML
+   * cards remain compatible.
+   */
+
+  setText(
+    'littleLawLambda',
+    Number.isFinite(peakArrival)
+      ? `${fmt(peakArrival, 2)} req/s`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawW',
+    Number.isFinite(peakResponse)
+      ? `${fmt(peakResponse, 4)} s`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawL',
+    Number.isFinite(peakL)
+      ? `${fmt(peakL, 2)} requests`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawUsers',
+    Number.isFinite(highestUsers)
+      ? `${fmtInt(highestUsers)} users`
+      : '—'
+  );
+
+
+  setText(
+    'littleLawMaxL',
+    Number.isFinite(peakL)
+      ? `${fmt(peakL, 2)} requests`
+      : '—'
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Overall status                                             */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * Little's Law classification is descriptive only.
+   *
+   * It is NOT a capacity verdict.
+   */
+
+  const lastRow =
+    normalizedRows[normalizedRows.length - 1];
+
+
+  const overallClassification =
+    lastRow?.classification || 'Measured';
+
+
+  let overallVariant = 'neutral';
+
+
+  const classificationLower =
+    String(overallClassification).toLowerCase();
+
+
+  if (
+    classificationLower.includes('critical') ||
+    classificationLower.includes('heavy')
+  ) {
+
+    overallVariant = 'danger';
+
+  } else if (
+    classificationLower.includes('moderate')
+  ) {
+
+    overallVariant = 'warning';
+
+  } else {
+
+    overallVariant = 'neutral';
+
+  }
+
+
+  setBadge(
+    'littleLawOverallStatus',
+    overallClassification,
+    overallVariant
+  );
+
+
+  setBadge(
+    'littleLawTableStatus',
+    `${normalizedRows.length} load levels`,
+    'neutral'
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Overall trends                                             */
+  /* ---------------------------------------------------------- */
+
+  const occupancyTrend =
+    lastRow?.occupancyTrend;
+
+  const responseTrend =
+    lastRow?.responseTimeTrend;
+
+  const arrivalTrend =
+    lastRow?.arrivalRateTrend;
+
+  const queueGrowth =
+    lastRow?.queueGrowth;
+
+
+  /* ---------------------------------------------------------- */
+  /* Occupancy trend                                            */
+  /* ---------------------------------------------------------- */
+
+  setBadge(
+    'littleLawOccupancyTrend',
+    occupancyTrend || 'No trend',
+    occupancyTrend === 'increasing'
+      ? 'warning'
+      : occupancyTrend === 'decreasing'
+        ? 'neutral'
+        : 'neutral'
+  );
+
+
+  let occupancyDescription =
+    'No occupancy trend was reported.';
+
+
+  if (occupancyTrend === 'increasing') {
+
+    occupancyDescription =
+      'The number of requests remaining in the system is increasing as workload rises. This indicates growing system occupancy and should be considered together with response time and throughput.';
+
+  } else if (occupancyTrend === 'decreasing') {
+
+    occupancyDescription =
+      'The number of requests remaining in the system decreased at the latest measured load level.';
+
+  } else if (occupancyTrend) {
+
+    occupancyDescription =
+      `The latest measured occupancy trend is ${occupancyTrend}.`;
+
+  }
+
+
+  setText(
+    'littleLawOccupancyDescription',
+    occupancyDescription
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Response-time trend                                        */
+  /* ---------------------------------------------------------- */
+
+  setBadge(
+    'littleLawResponseTrend',
+    responseTrend || 'No trend',
+    responseTrend === 'increasing'
+      ? 'warning'
+      : responseTrend === 'decreasing'
+        ? 'neutral'
+        : 'neutral'
+  );
+
+
+  let responseDescription =
+    'No response-time trend was reported.';
+
+
+  if (responseTrend === 'increasing') {
+
+    responseDescription =
+      'Average response time is increasing as workload rises, indicating that requests are taking longer to complete at higher load.';
+
+  } else if (responseTrend === 'decreasing') {
+
+    responseDescription =
+      'Average response time decreased at the latest measured load level.';
+
+  } else if (responseTrend) {
+
+    responseDescription =
+      `The latest measured response-time trend is ${responseTrend}.`;
+
+  }
+
+
+  setText(
+    'littleLawResponseDescription',
+    responseDescription
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Throughput trend                                           */
+  /* ---------------------------------------------------------- */
+
+  setBadge(
+    'littleLawArrivalTrend',
+    arrivalTrend || 'No trend',
+    arrivalTrend === 'increasing'
+      ? 'neutral'
+      : arrivalTrend === 'decreasing'
+        ? 'warning'
+        : 'neutral'
+  );
+
+
+  let arrivalDescription =
+    'No throughput trend was reported.';
+
+
+  if (arrivalTrend === 'increasing') {
+
+    arrivalDescription =
+      'Throughput is still increasing at the latest measured load level.';
+
+  } else if (arrivalTrend === 'decreasing') {
+
+    arrivalDescription =
+      'Throughput decreased at the latest measured load level. Combined with rising response time, this can indicate increasing contention or saturation and should be evaluated by the other prediction models.';
+
+  } else if (arrivalTrend) {
+
+    arrivalDescription =
+      `The latest measured throughput trend is ${arrivalTrend}.`;
+
+  }
+
+
+  setText(
+    'littleLawArrivalDescription',
+    arrivalDescription
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Occupancy signals                                          */
+  /* ---------------------------------------------------------- */
+
+  const highOccupancyRows =
+    normalizedRows.filter(
+      row => row.highOccupancy === true
+    );
+
+
+  const criticalOccupancyRows =
+    normalizedRows.filter(
+      row => row.criticalOccupancy === true
+    );
+
+
+  const highOccupancy =
+    highOccupancyRows.length > 0;
+
+
+  const criticalOccupancy =
+    criticalOccupancyRows.length > 0;
+
+
+  setText(
+    'littleLawHighOccupancy',
+    highOccupancy
+      ? 'Yes'
+      : 'No'
+  );
+
+
+  setText(
+    'littleLawCriticalOccupancy',
+    criticalOccupancy
+      ? 'Yes'
+      : 'No'
+  );
+
+
+  /* ---------------------------------------------------------- */
+  /* Table                                                       */
+  /* ---------------------------------------------------------- */
+
+  const body =
+    qs('#littlesLawTableBody');
+
+
+  if (body) {
+
+    body.innerHTML =
+      normalizedRows
+        .map(row => {
+
+          const occupancyTrendLabel =
+            row.occupancyTrend || '—';
+
+
+          let occupancyVariant =
+            'neutral';
+
+
+          if (
+            occupancyTrendLabel === 'increasing'
+          ) {
+
+            occupancyVariant = 'warning';
+
+          } else if (
+            occupancyTrendLabel === 'decreasing'
+          ) {
+
+            occupancyVariant = 'neutral';
+
+          }
+
+
+          /* ---------------------------------------------- */
+          /* Classification is descriptive only             */
+          /* ---------------------------------------------- */
+
+          let classificationVariant =
+            'neutral';
+
+
+          const cls =
+            String(row.classification)
+              .toLowerCase();
+
+
+          if (
+            cls.includes('critical') ||
+            cls.includes('heavy')
+          ) {
+
+            classificationVariant = 'danger';
+
+          } else if (
+            cls.includes('moderate')
+          ) {
+
+            classificationVariant = 'warning';
+
+          }
+
+
+          return `
+            <tr>
+
+              <td class="mono">
+                ${
+                  Number.isFinite(row.users)
+                    ? fmtInt(row.users)
+                    : '—'
+                }
+              </td>
+
+
+              <td class="mono">
+                ${
+                  Number.isFinite(row.arrivalRate)
+                    ? `${fmt(row.arrivalRate, 2)}`
+                    : '—'
+                }
+
+                <span class="table-unit">
+                  req/s
+                </span>
+              </td>
+
+
+              <td class="mono">
+                ${
+                  Number.isFinite(row.responseTime)
+                    ? `${fmt(row.responseTime, 4)}`
+                    : '—'
+                }
+
+                <span class="table-unit">
+                  s
+                </span>
+              </td>
+
+
+              <td class="mono">
+
+                <strong>
+                  ${
+                    Number.isFinite(row.requestsInSystem)
+                      ? fmt(row.requestsInSystem, 2)
+                      : '—'
+                  }
+                </strong>
+
+                <span class="table-unit">
+                  requests
+                </span>
+
+              </td>
+
+
+              <td>
+
+                <span class="badge badge--${classificationVariant}">
+                  ${escapeHtml(row.classification)}
+                </span>
+
+              </td>
+
+
+              <td>
+
+                <span class="badge badge--${occupancyVariant}">
+                  ${escapeHtml(occupancyTrendLabel)}
+                </span>
+
+              </td>
+
+            </tr>
+          `;
+
+        })
+        .join('');
+
+  }
+
+
+  /* ---------------------------------------------------------- */
+  /* Interpretation                                             */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * Find the load level with the highest measured L.
+   *
+   * This is useful for explaining Little's Law.
+   *
+   * It is NOT treated as application capacity.
+   */
+
+  const peakRow =
+    normalizedRows.reduce(
+      (best, row) => {
+
+        if (!best) {
+          return row;
+        }
+
+
+        if (
+          Number.isFinite(row.requestsInSystem) &&
+          Number.isFinite(best.requestsInSystem) &&
+          row.requestsInSystem > best.requestsInSystem
+        ) {
+
+          return row;
+
+        }
+
+
+        return best;
+
+      },
+      null
+    );
+
+
+  if (peakRow) {
+
+    /* -------------------------------------------------------- */
+    /* L interpretation                                         */
+    /* -------------------------------------------------------- */
+
+    setText(
+      'littleLawLInterpretation',
+
+      Number.isFinite(peakRow.requestsInSystem)
+
+        ? `At ${
+            Number.isFinite(peakRow.users)
+              ? fmtInt(peakRow.users)
+              : 'the measured'
+          } concurrent users, Little's Law estimates an average of ${
+            fmt(
+              peakRow.requestsInSystem,
+              2
+            )
+          } requests in the system.`
+
+        : 'Requests-in-system information is unavailable.'
+    );
+
+
+    /* -------------------------------------------------------- */
+    /* Lambda interpretation                                    */
+    /* -------------------------------------------------------- */
+
+    setText(
+      'littleLawLambdaInterpretation',
+
+      Number.isFinite(peakRow.arrivalRate)
+
+        ? `The corresponding measured throughput was ${
+            fmt(
+              peakRow.arrivalRate,
+              2
+            )
+          } requests per second.`
+
+        : 'Throughput information is unavailable.'
+    );
+
+
+    /* -------------------------------------------------------- */
+    /* W interpretation                                         */
+    /* -------------------------------------------------------- */
+
+    setText(
+      'littleLawWInterpretation',
+
+      Number.isFinite(peakRow.responseTime)
+
+        ? `The corresponding average response time was ${
+            fmt(
+              peakRow.responseTime,
+              4
+            )
+          } seconds (${
+            fmt(
+              peakRow.responseTime * 1000,
+              1
+            )
+          } ms).`
+
+        : 'Response-time information is unavailable.'
+    );
+
+  }
+
+
+  /* ---------------------------------------------------------- */
+  /* Closed-workload interpretation                             */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * Current backend assumption:
+   *
+   *     Z = 0 seconds
+   *
+   * Therefore:
+   *
+   *     N = X × (R + Z)
+   *       = X × R
+   *       = L
+   *
+   * The derived N value is therefore numerically equal to L
+   * under the current zero-think-time assumption.
+   *
+   * IMPORTANT:
+   *
+   *     N is NOT safe capacity.
+   *     N is NOT maximum users.
+   *     N is NOT an overload threshold.
+   *
+   * It is simply the concurrency quantity derived from the
+   * closed-workload form of Little's Law.
+   */
+
+  const closedRows =
+    normalizedRows.filter(
+      row =>
+        Number.isFinite(
+          row.derivedClosedWorkloadN
+        )
+    );
+
+
+  /*
+   * The current HTML does not contain a dynamic element for
+   * displaying derived N, so we intentionally do not inject
+   * another value into the page.
+   *
+   * The mathematical engine still provides the value through:
+   *
+   *     row.derivedClosedWorkloadN
+   *
+   * if another component needs it later.
+   */
+
+
+  /* ---------------------------------------------------------- */
+  /* Queue-growth context                                       */
+  /* ---------------------------------------------------------- */
+
+  if (queueGrowth === 'high_growth') {
+
+    /*
+     * Do not turn this into a capacity verdict.
+     *
+     * It is simply a signal for the other models.
+     */
+
+    if (
+      occupancyTrend === 'increasing' &&
+      responseTrend === 'increasing'
+    ) {
+
+      setText(
+        'littleLawOccupancyDescription',
+
+        'Requests remaining in the system are increasing while response time is also rising at the latest load level. This is a performance warning signal and should be evaluated with queueing, bottleneck, and SLO analysis.'
+      );
+
+    }
+
+  }
+
+
+  /* ---------------------------------------------------------- */
+  /* Chart                                                       */
+  /* ---------------------------------------------------------- */
+
+  const chartRows =
+    normalizedRows.filter(
+      row =>
+        Number.isFinite(row.users) &&
+        Number.isFinite(row.requestsInSystem)
+    );
+
+
+  if (!chartRows.length) {
+    return;
+  }
+
+
+  const labels =
+    chartRows.map(
+      row => fmtInt(row.users)
+    );
+
+
+  const occupancyData =
+    chartRows.map(
+      row => row.requestsInSystem
+    );
+
+
+  makeOrUpdateChart(
+    'littlesLaw',
+    'littlesLawChart',
+    {
+
+      type: 'line',
+
+      data: {
+
+        labels,
+
+        datasets: [
+
+          Object.assign(
+            measuredDataset(
+              'L — requests in system',
+              occupancyData
+            ),
+            {
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              tension: 0.25,
+              spanGaps: false
+            }
+          )
+
+        ]
+
+      },
+
+
+      options:
+        baseChartOptions({
+
           plugins: {
-          
+
             legend: {
               display: true,
+
               labels: {
                 color: cssVar('--ink-muted'),
+
                 font: {
                   family: 'Inter',
-                  size: 11.5,
-                },
-              },
+                  size: 11.5
+                }
+              }
             },
-          
+
             tooltip:
-              baseChartOptions().plugins.tooltip,
-          
+              baseChartOptions().plugins.tooltip
+
           },
-        
+
+
           scales: {
-          
+
             x: Object.assign(
               {},
               baseChartOptions().scales.x,
               {
+
                 title: {
                   display: true,
                   text: 'Concurrent users',
-                  color: cssVar('--ink-muted'),
-                },
+                  color: cssVar('--ink-muted')
+                }
+
               }
             ),
-          
+
+
             y: Object.assign(
               {},
               baseChartOptions().scales.y,
               {
+
                 title: {
                   display: true,
-                  text: 'Throughput (req/s)',
-                  color: cssVar('--ink-muted'),
-                },
+                  text: 'Average requests in system (L)',
+                  color: cssVar('--ink-muted')
+                }
+
               }
-            ),
-          
-          },
-        
-        }),
-      
-      }
-    );
-  
-  }
-
-  /* ---- Little's Law -------------------------------------------- */
-
-  function renderLittlesLaw(littleLaw, levels) {
-
-    /*
-    * Little's Law frontend renderer
-    *
-    * Mathematical relationship:
-    *
-    *     L = λ × W
-    *
-    * where:
-    *
-    *     L = average requests in the system
-    *     λ = arrival rate / throughput
-    *     W = average response time in seconds
-    *
-    * Backend result contains:
-    *
-    *     levels
-    *     summary
-    *     signals
-    *
-    * The renderer intentionally uses the user count supplied inside
-    * each backend row when available instead of assuming that
-    * `levels[i]` always matches `littleLaw.levels[i]`.
-    */
-
-
-    /* ---------------------------------------------------------- */
-    /* Safe input                                                 */
-    /* ---------------------------------------------------------- */
-
-    const rows =
-      littleLaw && Array.isArray(littleLaw.levels)
-        ? littleLaw.levels
-        : [];
-
-
-    const safeLevels =
-      Array.isArray(levels)
-        ? levels
-        : [];
-
-
-    /* ---------------------------------------------------------- */
-    /* Empty state                                                */
-    /* ---------------------------------------------------------- */
-
-    if (!rows.length) {
-
-      setBadge(
-        'littleLawOverallStatus',
-        'No data',
-        'neutral'
-      );
-
-      setBadge(
-        'littleLawTableStatus',
-        'Unavailable',
-        'neutral'
-      );
-
-      setText('littleLawPeakArrival', '—');
-      setText('littleLawPeakResponse', '—');
-      setText('littleLawPeakOccupancy', '—');
-      setText('littleLawHighestUsers', '—');
-
-      setText('littleLawLambda', '—');
-      setText('littleLawW', '—');
-      setText('littleLawL', '—');
-      setText('littleLawUsers', '—');
-
-      setText('littleLawMaxL', '—');
-
-      setText(
-        'littleLawOccupancyDescription',
-        'No occupancy information is available.'
-      );
-
-      setText(
-        'littleLawResponseDescription',
-        'No response-time information is available.'
-      );
-
-      setText(
-        'littleLawArrivalDescription',
-        'No arrival-rate information is available.'
-      );
-
-      setText(
-        'littleLawLInterpretation',
-        'No Little’s Law result is available.'
-      );
-
-      setText(
-        'littleLawLambdaInterpretation',
-        'No arrival-rate result is available.'
-      );
-
-      setText(
-        'littleLawWInterpretation',
-        'No response-time result is available.'
-      );
-
-      const body =
-        qs('#littlesLawTableBody');
-
-      if (body) {
-
-        body.innerHTML = `
-          <tr>
-            <td colspan="6" class="data-table__empty">
-              No Little's Law data available.
-            </td>
-          </tr>
-        `;
-
-      }
-
-      return;
-    }
-
-
-    /* ---------------------------------------------------------- */
-    /* Normalize backend rows                                     */
-    /* ---------------------------------------------------------- */
-
-    const normalizedRows =
-      rows
-        .map((row, index) => {
-
-          const r = row || {};
-
-          /*
-          * Prefer a user/load field returned directly by the backend.
-          *
-          * Fall back to the corresponding Locust level only when
-          * the backend does not provide one.
-          */
-
-          let users =
-            Number(
-              r.users ??
-              r.load_users ??
-              r.concurrent_users
-            );
-
-          if (!Number.isFinite(users)) {
-
-            users =
-              Number(
-                safeLevels[index]?.users
-              );
+            )
 
           }
-
-
-          /*
-          * Backend output may expose:
-          *
-          * arrival_rate
-          * response_time
-          * requests_in_system
-          *
-          * Keep the frontend tolerant of alternate naming.
-          */
-
-          const arrivalRate =
-            Number(
-              r.arrival_rate ??
-              r.lambda ??
-              r.throughput
-            );
-
-
-          const responseTime =
-            Number(
-              r.response_time ??
-              r.average_response_time
-            );
-
-
-          const requestsInSystem =
-            Number(
-              r.requests_in_system ??
-              r.concurrent_requests ??
-              r.L
-            );
-
-
-          const signals =
-            r.signals || {};
-
-
-          return {
-
-            original: r,
-
-            index,
-
-            users,
-
-            arrivalRate,
-
-            responseTime,
-
-            requestsInSystem,
-
-            classification:
-              r.load_classification ||
-              r.classification ||
-              '—',
-
-            highOccupancy:
-              signals.high_occupancy,
-
-            criticalOccupancy:
-              signals.critical_occupancy,
-
-            occupancyTrend:
-              signals.occupancy_trend,
-
-            responseTimeTrend:
-              signals.response_time_trend,
-
-            arrivalRateTrend:
-              signals.arrival_rate_trend,
-
-          };
 
         })
-        .filter(
-          (row) =>
-            Number.isFinite(row.users)
-            || Number.isFinite(row.arrivalRate)
-            || Number.isFinite(row.requestsInSystem)
-        );
-
-
-    if (!normalizedRows.length) {
-      return;
-    }
-
-
-    /* ---------------------------------------------------------- */
-    /* Sort by load                                               */
-    /* ---------------------------------------------------------- */
-
-    normalizedRows.sort(
-      (a, b) => {
-
-        if (
-          Number.isFinite(a.users)
-          && Number.isFinite(b.users)
-        ) {
-
-          return a.users - b.users;
-
-        }
-
-        return a.index - b.index;
-
-      }
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Calculate summary values                                  */
-    /* ---------------------------------------------------------- */
-
-    const validArrivalRates =
-      normalizedRows
-        .map((row) => row.arrivalRate)
-        .filter(Number.isFinite);
-
-
-    const validResponseTimes =
-      normalizedRows
-        .map((row) => row.responseTime)
-        .filter(Number.isFinite);
-
-
-    const validLValues =
-      normalizedRows
-        .map((row) => row.requestsInSystem)
-        .filter(Number.isFinite);
-
-
-    const peakArrival =
-      validArrivalRates.length
-        ? Math.max(...validArrivalRates)
-        : null;
-
-
-    const peakResponse =
-      validResponseTimes.length
-        ? Math.max(...validResponseTimes)
-        : null;
-
-
-    const peakL =
-      validLValues.length
-        ? Math.max(...validLValues)
-        : null;
-
-
-    const highestUsers =
-      normalizedRows
-        .map((row) => row.users)
-        .filter(Number.isFinite)
-        .reduce(
-          (max, value) => Math.max(max, value),
-          -Infinity
-        );
-
-
-    /* ---------------------------------------------------------- */
-    /* Top metric cards                                          */
-    /* ---------------------------------------------------------- */
-
-    setText(
-      'littleLawPeakArrival',
-      Number.isFinite(peakArrival)
-        ? fmt(peakArrival, 2)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawPeakResponse',
-      Number.isFinite(peakResponse)
-        ? fmt(peakResponse, 4)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawPeakOccupancy',
-      Number.isFinite(peakL)
-        ? fmt(peakL, 2)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawHighestUsers',
-      Number.isFinite(highestUsers)
-        ? fmtInt(highestUsers)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawLambda',
-      Number.isFinite(peakArrival)
-        ? fmt(peakArrival, 2)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawW',
-      Number.isFinite(peakResponse)
-        ? fmt(peakResponse, 4)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawL',
-      Number.isFinite(peakL)
-        ? fmt(peakL, 2)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawUsers',
-      Number.isFinite(highestUsers)
-        ? fmtInt(highestUsers)
-        : '—'
-    );
-
-
-    setText(
-      'littleLawMaxL',
-      Number.isFinite(peakL)
-        ? fmt(peakL, 2)
-        : '—'
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Overall status                                             */
-    /* ---------------------------------------------------------- */
-
-    let overallClassification =
-      normalizedRows[normalizedRows.length - 1]
-        ?.classification || 'Unknown';
-
-
-    let overallVariant = 'neutral';
-
-    const classificationLower =
-      String(overallClassification).toLowerCase();
-
-
-    if (
-      classificationLower.includes('very light')
-      || classificationLower.includes('light')
-    ) {
-
-      overallVariant = 'success';
-
-    } else if (
-      classificationLower.includes('moderate')
-    ) {
-
-      overallVariant = 'warning';
-
-    } else if (
-      classificationLower.includes('heavy')
-      || classificationLower.includes('critical')
-    ) {
-
-      overallVariant = 'danger';
 
     }
+  );
 
-
-    setBadge(
-      'littleLawOverallStatus',
-      overallClassification,
-      overallVariant
-    );
-
-
-    setBadge(
-      'littleLawTableStatus',
-      `${normalizedRows.length} load levels`,
-      'neutral'
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Overall trends                                            */
-    /* ---------------------------------------------------------- */
-
-    const lastRow =
-      normalizedRows[normalizedRows.length - 1];
-
-
-    const occupancyTrend =
-      lastRow?.occupancyTrend;
-
-
-    const responseTrend =
-      lastRow?.responseTimeTrend;
-
-
-    const arrivalTrend =
-      lastRow?.arrivalRateTrend;
-
-
-    /* ---------------------------------------------------------- */
-    /* Occupancy trend                                            */
-    /* ---------------------------------------------------------- */
-
-    setBadge(
-      'littleLawOccupancyTrend',
-      occupancyTrend
-        ? occupancyTrend
-        : 'No trend',
-      occupancyTrend === 'increasing'
-        ? 'warning'
-        : occupancyTrend === 'decreasing'
-          ? 'success'
-          : 'neutral'
-    );
-
-
-    let occupancyDescription =
-      'No occupancy trend was reported.';
-
-
-    if (occupancyTrend === 'increasing') {
-
-      occupancyDescription =
-        'System occupancy is increasing as workload rises. More requests are remaining in the system at higher concurrency levels.';
-
-    } else if (occupancyTrend === 'decreasing') {
-
-      occupancyDescription =
-        'System occupancy is decreasing at the latest measured load level.';
-
-    } else if (occupancyTrend) {
-
-      occupancyDescription =
-        `The latest measured occupancy trend is ${occupancyTrend}.`;
-
-    }
-
-
-    setText(
-      'littleLawOccupancyDescription',
-      occupancyDescription
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Response-time trend                                        */
-    /* ---------------------------------------------------------- */
-
-    setBadge(
-      'littleLawResponseTrend',
-      responseTrend
-        ? responseTrend
-        : 'No trend',
-      responseTrend === 'increasing'
-        ? 'warning'
-        : responseTrend === 'decreasing'
-          ? 'success'
-          : 'neutral'
-    );
-
-
-    let responseDescription =
-      'No response-time trend was reported.';
-
-
-    if (responseTrend === 'increasing') {
-
-      responseDescription =
-        'Response time is increasing as workload grows, indicating growing latency under higher concurrency.';
-
-    } else if (responseTrend === 'decreasing') {
-
-      responseDescription =
-        'Response time decreased at the latest measured load level.';
-
-    } else if (responseTrend) {
-
-      responseDescription =
-        `The latest measured response-time trend is ${responseTrend}.`;
-
-    }
-
-
-    setText(
-      'littleLawResponseDescription',
-      responseDescription
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Arrival-rate trend                                         */
-    /* ---------------------------------------------------------- */
-
-    setBadge(
-      'littleLawArrivalTrend',
-      arrivalTrend
-        ? arrivalTrend
-        : 'No trend',
-      arrivalTrend === 'increasing'
-        ? 'success'
-        : arrivalTrend === 'decreasing'
-          ? 'warning'
-          : 'neutral'
-    );
-
-
-    let arrivalDescription =
-      'No arrival-rate trend was reported.';
-
-
-    if (arrivalTrend === 'increasing') {
-
-      arrivalDescription =
-        'Throughput continues to increase as concurrency grows.';
-
-    } else if (arrivalTrend === 'decreasing') {
-
-      arrivalDescription =
-        'Throughput decreased at the latest measured load level, which may indicate saturation or increasing contention.';
-
-    } else if (arrivalTrend) {
-
-      arrivalDescription =
-        `The latest measured arrival-rate trend is ${arrivalTrend}.`;
-
-    }
-
-
-    setText(
-      'littleLawArrivalDescription',
-      arrivalDescription
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Table                                                     */
-    /* ---------------------------------------------------------- */
-
-    const body =
-      qs('#littlesLawTableBody');
-
-
-    if (body) {
-
-      body.innerHTML =
-        normalizedRows
-          .map((row) => {
-
-            const occupancyTrendLabel =
-              row.occupancyTrend || '—';
-
-
-            let occupancyVariant =
-              'neutral';
-
-
-            if (
-              occupancyTrendLabel === 'increasing'
-            ) {
-
-              occupancyVariant = 'warning';
-
-            } else if (
-              occupancyTrendLabel === 'decreasing'
-            ) {
-
-              occupancyVariant = 'success';
-
-            }
-
-
-            let classificationVariant =
-              'neutral';
-
-
-            const cls =
-              String(row.classification).toLowerCase();
-
-
-            if (
-              cls.includes('very light')
-              || cls.includes('light')
-            ) {
-
-              classificationVariant = 'success';
-
-            } else if (
-              cls.includes('moderate')
-            ) {
-
-              classificationVariant = 'warning';
-
-            } else if (
-              cls.includes('heavy')
-              || cls.includes('critical')
-            ) {
-
-              classificationVariant = 'danger';
-
-            }
-
-
-            return `
-              <tr>
-
-                <td class="mono">
-                  ${
-                    Number.isFinite(row.users)
-                      ? fmtInt(row.users)
-                      : '—'
-                  }
-                </td>
-
-
-                <td class="mono">
-                  ${
-                    Number.isFinite(row.arrivalRate)
-                      ? `${fmt(row.arrivalRate, 2)}`
-                      : '—'
-                  }
-                  <span class="table-unit">
-                    req/s
-                  </span>
-                </td>
-
-
-                <td class="mono">
-                  ${
-                    Number.isFinite(row.responseTime)
-                      ? `${fmt(row.responseTime, 4)}`
-                      : '—'
-                  }
-                  <span class="table-unit">
-                    s
-                  </span>
-                </td>
-
-
-                <td class="mono">
-
-                  <strong>
-                    ${
-                      Number.isFinite(row.requestsInSystem)
-                        ? fmt(row.requestsInSystem, 2)
-                        : '—'
-                    }
-                  </strong>
-
-                  <span class="table-unit">
-                    requests
-                  </span>
-
-                </td>
-
-
-                <td>
-
-                  <span class="badge badge--${classificationVariant}">
-                    ${escapeHtml(row.classification)}
-                  </span>
-
-                </td>
-
-
-                <td>
-
-                  <span class="badge badge--${occupancyVariant}">
-                    ${escapeHtml(occupancyTrendLabel)}
-                  </span>
-
-                </td>
-
-              </tr>
-            `;
-
-          })
-          .join('');
-
-    }
-
-
-    /* ---------------------------------------------------------- */
-    /* Interpretation                                            */
-    /* ---------------------------------------------------------- */
-
-    const peakRow =
-      normalizedRows.reduce(
-        (best, row) => {
-
-          if (!best) {
-            return row;
-          }
-
-          if (
-            Number.isFinite(row.requestsInSystem)
-            && Number.isFinite(best.requestsInSystem)
-            && row.requestsInSystem > best.requestsInSystem
-          ) {
-
-            return row;
-
-          }
-
-          return best;
-
-        },
-        null
-      );
-
-
-    if (peakRow) {
-
-      setText(
-        'littleLawLInterpretation',
-
-        Number.isFinite(peakRow.requestsInSystem)
-          ? `At the highest observed occupancy, approximately ${fmt(
-              peakRow.requestsInSystem,
-              2
-            )} requests were simultaneously present in the system.`
-          : 'Requests-in-system information is unavailable.'
-      );
-
-
-      setText(
-        'littleLawLambdaInterpretation',
-
-        Number.isFinite(peakRow.arrivalRate)
-          ? `The corresponding arrival rate was ${fmt(
-              peakRow.arrivalRate,
-              2
-            )} requests per second.`
-          : 'Arrival-rate information is unavailable.'
-      );
-
-
-      setText(
-        'littleLawWInterpretation',
-
-        Number.isFinite(peakRow.responseTime)
-          ? `The corresponding average response time was ${fmt(
-              peakRow.responseTime,
-              4
-            )} seconds.`
-          : 'Response-time information is unavailable.'
-      );
-
-    }
-
-
-    /* ---------------------------------------------------------- */
-    /* Signals                                                   */
-    /* ---------------------------------------------------------- */
-
-    const signals =
-      littleLaw.signals || {};
-
-
-    const highOccupancy =
-      signals.high_occupancy;
-
-
-    const criticalOccupancy =
-      signals.critical_occupancy;
-
-
-    setText(
-      'littleLawHighOccupancy',
-      highOccupancy === true
-        ? 'Yes'
-        : highOccupancy === false
-          ? 'No'
-          : '—'
-    );
-
-
-    setText(
-      'littleLawCriticalOccupancy',
-      criticalOccupancy === true
-        ? 'Yes'
-        : criticalOccupancy === false
-          ? 'No'
-          : '—'
-    );
-
-
-    /* ---------------------------------------------------------- */
-    /* Chart                                                     */
-    /* ---------------------------------------------------------- */
-
-    const chartRows =
-      normalizedRows.filter(
-        (row) =>
-          Number.isFinite(row.users)
-          && Number.isFinite(row.requestsInSystem)
-      );
-
-
-    if (!chartRows.length) {
-      return;
-    }
-
-
-    const labels =
-      chartRows.map(
-        (row) => fmtInt(row.users)
-      );
-
-
-    const occupancyData =
-      chartRows.map(
-        (row) => row.requestsInSystem
-      );
-
-
-    makeOrUpdateChart(
-      'littlesLaw',
-      'littlesLawChart',
-      {
-
-        type: 'line',
-
-        data: {
-
-          labels,
-
-          datasets: [
-
-            Object.assign(
-              measuredDataset(
-                'L — requests in system',
-                occupancyData
-              ),
-              {
-                pointRadius: 4,
-                pointHoverRadius: 6,
-                tension: 0.25,
-                spanGaps: false,
-              }
-            ),
-
-          ],
-
-        },
-
-
-        options:
-          baseChartOptions({
-
-            plugins: {
-
-              legend: {
-                display: true,
-
-                labels: {
-                  color: cssVar('--ink-muted'),
-
-                  font: {
-                    family: 'Inter',
-                    size: 11.5,
-                  },
-                },
-
-              },
-
-              tooltip:
-                baseChartOptions().plugins.tooltip,
-
-            },
-
-
-            scales: {
-
-              x: Object.assign(
-                {},
-                baseChartOptions().scales.x,
-                {
-
-                  title: {
-                    display: true,
-                    text: 'Concurrent users',
-                    color: cssVar('--ink-muted'),
-                  },
-
-                }
-              ),
-
-
-              y: Object.assign(
-                {},
-                baseChartOptions().scales.y,
-                {
-
-                  title: {
-                    display: true,
-                    text: 'Requests in system (L)',
-                    color: cssVar('--ink-muted'),
-                  },
-
-                }
-              ),
-
-            },
-
-          }),
-
-      }
-    );
-
-  }
+}
 
   /* ---- Queueing Theory ---------------------------------------- */
 
@@ -4905,6 +5840,556 @@ truncated: ${fmtBool(locust.truncated)}`;
     };
   
     return map[value] || value;
+  }
+
+
+/* ---- Forced Flow Law --------------------------------------- */
+
+function renderForcedFlow(forcedFlow) {
+  const body = qs('#forcedFlowTableBody');
+
+  const emptyRow = (msg) => {
+    if (body) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="7" class="data-table__empty">
+            ${escapeHtml(msg)}
+          </td>
+        </tr>
+      `;
+    }
+  };
+
+  /* ----------------------------------------------------------
+     Reset summary values
+     ---------------------------------------------------------- */
+
+  setText('forcedFlowSystemThroughput', '—');
+  setText('forcedFlowComponentCount', '—');
+  setText('forcedFlowDominantComponent', '—');
+
+  setBadge(
+    'forcedFlowAvailabilityBadge',
+    'Unavailable',
+    'neutral'
+  );
+
+  setBadge(
+    'forcedFlowDominantBadge',
+    '—',
+    'neutral'
+  );
+
+  /* ----------------------------------------------------------
+     Reset ranking
+     ---------------------------------------------------------- */
+
+  const rankingEl = qs('#forcedFlowRanking');
+
+  if (rankingEl) {
+    rankingEl.innerHTML = `
+      <p class="empty-note">
+        No component ranking available yet.
+      </p>
+    `;
+  }
+
+  /* ----------------------------------------------------------
+     Handle unavailable / invalid result
+     ---------------------------------------------------------- */
+
+  if (!forcedFlow || forcedFlow.available !== true) {
+
+    const reason =
+      (forcedFlow && forcedFlow.reason)
+      || 'No Forced Flow instrumentation was supplied for this run.';
+
+    setText('forcedFlowReason', reason);
+
+    emptyRow(
+      'No component instrumentation available for this run.'
+    );
+
+    renderNoteList(
+      '#forcedFlowNotes',
+      null,
+      reason
+    );
+
+    return;
+  }
+
+  /* ----------------------------------------------------------
+     Available
+     ---------------------------------------------------------- */
+
+  setBadge(
+    'forcedFlowAvailabilityBadge',
+    'Available',
+    'success'
+  );
+
+  setText(
+    'forcedFlowReason',
+    'Component-level instrumentation was supplied and analyzed.'
+  );
+
+  /* ----------------------------------------------------------
+     System throughput
+     ---------------------------------------------------------- */
+
+  const systemThroughput = forcedFlow.system_throughput;
+
+  setText(
+    'forcedFlowSystemThroughput',
+    Number.isFinite(Number(systemThroughput))
+      ? `${fmt(systemThroughput, 2)} /s`
+      : '—'
+  );
+
+  /* ----------------------------------------------------------
+     Component data
+     ---------------------------------------------------------- */
+
+  const perComponent =
+    forcedFlow.per_component &&
+    typeof forcedFlow.per_component === 'object'
+      ? forcedFlow.per_component
+      : {};
+
+  const componentNames = Object.keys(perComponent);
+
+  setText(
+    'forcedFlowComponentCount',
+    String(componentNames.length)
+  );
+
+  /* ----------------------------------------------------------
+     Ranking
+     ---------------------------------------------------------- */
+
+  const ranked =
+    Array.isArray(forcedFlow.ranked_by_demand)
+      ? forcedFlow.ranked_by_demand.filter(
+          (name) => Object.prototype.hasOwnProperty.call(
+            perComponent,
+            name
+          )
+        )
+      : componentNames;
+
+  const dominant =
+    forcedFlow.dominant_component &&
+    Object.prototype.hasOwnProperty.call(
+      perComponent,
+      forcedFlow.dominant_component
+    )
+      ? forcedFlow.dominant_component
+      : (ranked.length ? ranked[0] : null);
+
+  if (dominant) {
+
+    setBadge(
+      'forcedFlowDominantBadge',
+      formatSignalName(dominant),
+      'accent'
+    );
+
+    setText(
+      'forcedFlowDominantComponent',
+      formatSignalName(dominant)
+    );
+
+  } else {
+
+    setBadge(
+      'forcedFlowDominantBadge',
+      '—',
+      'neutral'
+    );
+
+    setText(
+      'forcedFlowDominantComponent',
+      '—'
+    );
+  }
+
+  /* ----------------------------------------------------------
+     No usable components
+     ---------------------------------------------------------- */
+
+  if (!ranked.length) {
+
+    emptyRow(
+      'No component had usable instrumentation data.'
+    );
+
+    renderNoteList(
+      '#forcedFlowNotes',
+      forcedFlow.notes || [],
+      'No component-level analysis notes.'
+    );
+
+    return;
+  }
+
+  /* ----------------------------------------------------------
+     Per-component table
+     ---------------------------------------------------------- */
+
+  if (body) {
+
+    body.innerHTML = ranked.map((name) => {
+
+      const info = perComponent[name] || {};
+      const comparison = info.throughput_comparison;
+
+      /* ---- Visits / request ---- */
+
+      const visits =
+        Number.isFinite(Number(info.visits_per_request))
+          ? fmt(info.visits_per_request, 2)
+          : '—';
+
+      /* ---- Service time ---- */
+
+      const serviceTime =
+        Number.isFinite(Number(info.service_time_seconds))
+          ? `${fmt(
+              Number(info.service_time_seconds) * 1000,
+              2
+            )} ms`
+          : '—';
+
+      /* ---- Component throughput ---- */
+
+      const componentThroughput =
+        Number.isFinite(Number(info.component_throughput))
+          ? `${fmt(info.component_throughput, 2)} /s`
+          : '—';
+
+      /* ---- Service demand ---- */
+
+      const serviceDemand =
+        Number.isFinite(Number(info.service_demand))
+          ? `${fmt(
+              Number(info.service_demand) * 1000,
+              3
+            )} ms`
+          : '—';
+
+      /* ---- Observed throughput ---- */
+
+      const observedThroughput =
+        comparison &&
+        Number.isFinite(Number(comparison.observed_throughput))
+          ? `${fmt(
+              comparison.observed_throughput,
+              2
+            )} /s`
+          : '<span class="muted">Not measured</span>';
+
+      /* ---- Comparison ---- */
+
+      let comparisonCell =
+        '<span class="muted">Not measured</span>';
+
+      if (comparison) {
+
+        const rel = comparison.relative_difference;
+
+        const relText =
+          rel === null ||
+          rel === undefined ||
+          !Number.isFinite(Number(rel))
+            ? '—'
+            : fmtPercent(Number(rel) * 100, 1);
+
+        if (comparison.consistent === true) {
+
+          comparisonCell = `
+            <span class="badge badge--success">
+              Consistent
+            </span>
+            <span class="mono">
+              ${relText}
+            </span>
+          `;
+
+        } else if (comparison.consistent === false) {
+
+          comparisonCell = `
+            <span class="badge badge--warn">
+              Diverges
+            </span>
+            <span class="mono">
+              ${relText}
+            </span>
+          `;
+
+        } else {
+
+          comparisonCell = `
+            <span class="mono">
+              ${relText}
+            </span>
+          `;
+        }
+      }
+
+      return `
+        <tr>
+          <td>
+            <strong>
+              ${escapeHtml(formatSignalName(name))}
+            </strong>
+          </td>
+
+          <td class="mono">
+            ${visits}
+          </td>
+
+          <td class="mono">
+            ${serviceTime}
+          </td>
+
+          <td class="mono">
+            ${componentThroughput}
+          </td>
+
+          <td class="mono">
+            ${serviceDemand}
+          </td>
+
+          <td class="mono">
+            ${observedThroughput}
+          </td>
+
+          <td>
+            ${comparisonCell}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  /* ----------------------------------------------------------
+     Ranking display
+     ---------------------------------------------------------- */
+
+  if (rankingEl) {
+
+    rankingEl.innerHTML = ranked.map((name, index) => {
+
+      const info = perComponent[name] || {};
+
+      const demand =
+        Number.isFinite(Number(info.service_demand))
+          ? `${fmt(
+              Number(info.service_demand) * 1000,
+              3
+            )} ms/request`
+          : '—';
+
+      const label =
+        index === 0
+          ? 'Highest demand'
+          : `Rank ${index + 1}`;
+
+      return `
+        <div class="note-item">
+          <strong>
+            ${index + 1}. ${escapeHtml(
+              formatSignalName(name)
+            )}
+          </strong>
+
+          <span class="muted">
+            ${label} · ${demand}
+          </span>
+        </div>
+      `;
+
+    }).join('');
+  }
+
+  /* ----------------------------------------------------------
+     Notes + throughput comparison notes
+     ---------------------------------------------------------- */
+
+  const comparisonNotes = ranked
+    .map((name) => {
+
+      const comparison =
+        (perComponent[name] || {}).throughput_comparison;
+
+      if (
+        comparison &&
+        comparison.note
+      ) {
+        return `${formatSignalName(name)}: ${comparison.note}`;
+      }
+
+      return null;
+
+    })
+    .filter(Boolean);
+
+  const notes = [
+    ...(Array.isArray(forcedFlow.notes)
+      ? forcedFlow.notes
+      : []),
+    ...comparisonNotes
+  ];
+
+  renderNoteList(
+    '#forcedFlowNotes',
+    notes,
+    'No Forced Flow notes for this run.'
+  );
+}
+
+
+  /* ---- Amdahl's Law ------------------------------------------ */
+
+  function renderAmdahl(amdahl) {
+    const body = qs('#amdahlTableBody');
+    const emptyRow = (msg) => {
+      if (body) body.innerHTML = `<tr><td colspan="5" class="data-table__empty">${escapeHtml(msg)}</td></tr>`;
+    };
+
+    if (!amdahl || amdahl.available === false) {
+      const reason = (amdahl && amdahl.reason)
+        || 'Amdahl analysis requires bottleneck service-demand data, which was not available.';
+      setBadge('amdahlBottleneckBadge', 'Unavailable', 'neutral');
+      ['amdahlCurrentThroughput', 'amdahlMaxSpeedup', 'amdahlImpliedThroughput', 'amdahlNextBottleneck']
+        .forEach((id) => setText(id, '—'));
+      emptyRow('No Amdahl analysis available for this run.');
+      renderNoteList('#amdahlNotes', null, reason);
+      return;
+    }
+
+    const bottleneckName = amdahl.bottleneck_resource || amdahl.bottleneck || '—';
+    setBadge(
+      'amdahlBottleneckBadge',
+      bottleneckName !== '—' ? String(bottleneckName).toUpperCase() : '—',
+      bottleneckName !== '—' ? 'accent' : 'neutral'
+    );
+
+    setText('amdahlCurrentThroughput', fmt(amdahl.current_throughput, 2));
+
+    const maxSpeedup = amdahl.max_speedup ?? amdahl.maximum_speedup;
+    setText('amdahlMaxSpeedup', maxSpeedup === null || maxSpeedup === undefined ? '—' : `${fmt(maxSpeedup, 2)}×`);
+    setText('amdahlImpliedThroughput', fmt(amdahl.max_throughput ?? amdahl.implied_max_throughput, 2));
+
+    const next = amdahl.next_bottleneck;
+    if (next && typeof next === 'object') {
+      const demand = next.service_demand;
+      setText(
+        'amdahlNextBottleneck',
+        `${formatSignalName(next.resource || '—')}${
+          demand === null || demand === undefined ? '' : ` · ${fmt(demand * 1000, 3)} ms`
+        }`
+      );
+    } else {
+      setText('amdahlNextBottleneck', next ? formatSignalName(String(next)) : '—');
+    }
+
+    // per_resource may arrive as a dict keyed by resource name or as a list.
+    const perResourceRaw = amdahl.per_resource || amdahl.resources || {};
+    const rows = Array.isArray(perResourceRaw)
+      ? perResourceRaw
+      : Object.entries(perResourceRaw).map(([name, info]) =>
+          Object.assign({ resource: name }, info && typeof info === 'object' ? info : {}));
+
+    if (!rows.length) {
+      emptyRow('No per-resource optimization ceilings were computed.');
+    } else if (body) {
+      const sorted = rows.slice().sort((a, b) =>
+        Number(b.max_speedup ?? b.maximum_speedup ?? 0) - Number(a.max_speedup ?? a.maximum_speedup ?? 0));
+
+      body.innerHTML = sorted.map((row) => {
+        const fraction = row.fraction ?? row.resource_fraction;
+        const speedup = row.max_speedup ?? row.maximum_speedup;
+        return `
+          <tr>
+            <td>${escapeHtml(formatSignalName(row.resource || '—'))}</td>
+            <td class="mono">${row.service_demand === null || row.service_demand === undefined
+              ? '—' : `${fmt(row.service_demand * 1000, 3)} ms`}</td>
+            <td class="mono">${fraction === null || fraction === undefined ? '—' : fmtPercent(fraction * 100, 1)}</td>
+            <td class="mono">${speedup === null || speedup === undefined ? '—' : `${fmt(speedup, 2)}×`}</td>
+            <td class="mono">${fmt(row.max_throughput ?? row.implied_max_throughput, 2)}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    renderNoteList('#amdahlNotes', amdahl.notes, 'No Amdahl notes for this run.');
+  }
+
+  /* ---- SLO capacity ------------------------------------------ */
+
+  function renderSLO(slo) {
+    const body = qs('#sloTableBody');
+    const emptyRow = (msg) => {
+      if (body) body.innerHTML = `<tr><td colspan="5" class="data-table__empty">${escapeHtml(msg)}</td></tr>`;
+    };
+
+    if (!slo || slo.success === false || !slo.evaluations) {
+      const reason = (slo && slo.error) || 'SLO analysis did not run for this experiment.';
+      ['slo-capacity-observed', 'slo-capacity-overall', 'slo-first-failure-observed', 'slo-first-failure-overall']
+        .forEach((id) => setText(id, '—'));
+      setText('slo-max-response-time', '—');
+      setText('slo-max-error-rate', '—');
+      emptyRow('No SLO analysis available yet.');
+      renderNoteList('#sloNotes', null, reason);
+      return;
+    }
+
+    const thresholds = slo.thresholds || {};
+    setText('slo-max-response-time', thresholds.max_response_time_seconds === undefined
+      ? '—' : `${fmt(thresholds.max_response_time_seconds * 1000, 0)} ms`);
+    setText('slo-max-error-rate', thresholds.max_error_rate_percent === undefined
+      ? '—' : fmtPercent(thresholds.max_error_rate_percent, 2));
+
+    // A null capacity means even the lowest level failed the budget — which
+    // is a real finding, not missing data, so it reads "None" rather than "—".
+    const capText = (value) => (value === null || value === undefined ? 'None' : fmtInt(value));
+    setText('slo-capacity-observed', capText(slo.slo_capacity_observed));
+    setText('slo-capacity-overall', capText(slo.slo_capacity_overall));
+
+    // first_failure being null means nothing failed, up to the highest level.
+    const failText = (value) => (value === null || value === undefined ? 'None' : fmtInt(value));
+    setText('slo-first-failure-observed', failText(slo.first_failure_observed_at));
+    setText('slo-first-failure-overall', failText(slo.first_failure_overall_at));
+
+    const evaluations = slo.evaluations || [];
+    if (!evaluations.length) {
+      emptyRow('No load levels were evaluated against the SLO.');
+    } else if (body) {
+      body.innerHTML = evaluations.map((ev) => {
+        const sourceBadge = ev.source === 'predicted'
+          ? '<span class="badge badge--neutral">Predicted</span>'
+          : '<span class="badge badge--accent">Observed</span>';
+
+        const rtClass = ev.response_time_ok ? '' : ' is-breach';
+        const errClass = ev.error_rate_ok ? '' : ' is-breach';
+
+        const verdict = ev.passed
+          ? '<span class="badge badge--success">PASS</span>'
+          : '<span class="badge badge--danger">FAIL</span>';
+
+        return `
+          <tr>
+            <td class="mono">${fmtInt(ev.users)}</td>
+            <td>${sourceBadge}</td>
+            <td class="mono${rtClass}">${fmt(ev.response_time * 1000, 1)} ms</td>
+            <td class="mono${errClass}">${fmtPercent(ev.error_rate_percent, 2)}</td>
+            <td>${verdict}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    renderNoteList('#sloNotes', slo.notes, 'No SLO notes for this run.');
   }
 
   /* ---- Capacity Planning ------------------------------------- */
@@ -8008,6 +9493,208 @@ truncated: ${fmtBool(locust.truncated)}`;
   /* ============================================================
      MODEL PLAYGROUND
      ============================================================ */
+/* ============================================================
+   DATABASE / CACHE MONITORING
+   ============================================================ */
+
+/*
+ * Database monitoring is now automatic.
+ *
+ * The backend:
+ *   1. detects the database dependency,
+ *   2. resolves its runtime configuration,
+ *   3. starts DBMonitor,
+ *   4. runs Locust,
+ *   5. stops DBMonitor,
+ *   6. returns database_metrics.
+ *
+ * The frontend never receives or sends database passwords.
+ */
+
+function resetDatabaseMonitoringView() {
+  setBadge('dbMonitorStatusBadge', 'Waiting', 'neutral');
+
+  setText('dbMonitorId', 'Automatic');
+  setText('dbMonitorActiveConn', '—');
+  setText('dbMonitorMaxConn', '—');
+  setText('dbMonitorPoolUtil', '—');
+  setText('dbMonitorSampleCount', '—');
+  setText('dbMonitorError', '—');
+
+  const engineEl = qs('#dbMonitorDetectedEngine');
+  const sourceEl = qs('#dbMonitorDetectedSource');
+  const hostEl = qs('#dbMonitorDetectedHost');
+
+  if (engineEl) engineEl.textContent = '—';
+  if (sourceEl) sourceEl.textContent = '—';
+  if (hostEl) hostEl.textContent = '—';
+}
+
+
+function setDatabaseMonitoringState(stateName, text) {
+  setBadge('dbMonitorStatusBadge', text, stateName);
+}
+
+
+function renderDatabaseMonitoring(result) {
+  /*
+   * The backend returns two related objects:
+   *
+   * database_monitoring:
+   *   safe information about whether monitoring was available.
+   *
+   * database_metrics:
+   *   actual metrics collected during the load test.
+   */
+
+  resetDatabaseMonitoringView();
+
+  if (!result) {
+    setDatabaseMonitoringState('neutral', 'No data');
+    return;
+  }
+
+  const monitorInfo = result.database_monitoring || null;
+  const metrics = result.database_metrics || null;
+
+  // ------------------------------------------------------------
+  // Show detected/monitorable database information
+  // ------------------------------------------------------------
+
+  if (monitorInfo) {
+    const engine = monitorInfo.engine || '—';
+    const source = Array.isArray(monitorInfo.source)
+      ? monitorInfo.source.join(', ')
+      : (monitorInfo.source || '—');
+
+    setText(
+      'dbMonitorDetectedEngine',
+      engine === '—' ? '—' : capitalizeFirst(engine)
+    );
+
+    setText('dbMonitorDetectedSource', source);
+
+    /*
+     * Host is safe to display because it is not a credential.
+     * Do not display username/password/database credentials.
+     */
+    setText(
+      'dbMonitorDetectedHost',
+      monitorInfo.host
+        ? `${monitorInfo.host}${monitorInfo.port ? `:${monitorInfo.port}` : ''}`
+        : '—'
+    );
+  }
+
+  // ------------------------------------------------------------
+  // No DB monitoring available
+  // ------------------------------------------------------------
+
+  if (!metrics || metrics.available === false) {
+    const reason =
+      (metrics && metrics.error) ||
+      (monitorInfo && monitorInfo.reason) ||
+      'No runtime database metrics were collected.';
+
+    setDatabaseMonitoringState('neutral', 'Unavailable');
+    setText('dbMonitorError', reason);
+
+    logLine(`Database monitoring unavailable: ${reason}`);
+
+    return;
+  }
+
+  // ------------------------------------------------------------
+  // Actual database metrics
+  // ------------------------------------------------------------
+
+  const activeAvg = metrics.active_connections_avg;
+  const activePeak = metrics.active_connections_peak;
+
+  const poolAvg = metrics.connection_pool_utilization_avg_pct;
+  const poolPeak = metrics.connection_pool_utilization_peak_pct;
+
+  const maxConnections = metrics.max_connections;
+  const sampleCount = metrics.sample_count;
+
+  const pair = (avg, peak, decimals = 1, suffix = '') => {
+    const a =
+      avg === null || avg === undefined
+        ? '—'
+        : `${fmt(avg, decimals)}${suffix}`;
+
+    const p =
+      peak === null || peak === undefined
+        ? '—'
+        : `${fmt(peak, decimals)}${suffix}`;
+
+    return `${a} / ${p}`;
+  };
+
+  setDatabaseMonitoringState('success', 'Collected');
+
+  setText(
+    'dbMonitorActiveConn',
+    pair(activeAvg, activePeak, 1)
+  );
+
+  setText(
+    'dbMonitorMaxConn',
+    maxConnections === null || maxConnections === undefined
+      ? '—'
+      : fmtInt(maxConnections)
+  );
+
+  setText(
+    'dbMonitorPoolUtil',
+    pair(poolAvg, poolPeak, 1, '%')
+  );
+
+  setText(
+    'dbMonitorSampleCount',
+    sampleCount === null || sampleCount === undefined
+      ? '—'
+      : fmtInt(sampleCount)
+  );
+
+  setText(
+    'dbMonitorError',
+    metrics.monitoring_error || 'None'
+  );
+
+  // ------------------------------------------------------------
+  // Status message
+  // ------------------------------------------------------------
+
+  const engine = metrics.engine || monitorInfo?.engine || 'database';
+
+  if (metrics.monitoring_error) {
+    logLine(
+      `${capitalizeFirst(engine)} monitoring completed with a warning: ${metrics.monitoring_error}`,
+      'error'
+    );
+  } else {
+    logLine(
+      `${capitalizeFirst(engine)} monitoring completed — ${sampleCount || 0} sample(s) collected.`,
+      'success'
+    );
+  }
+
+  // ------------------------------------------------------------
+  // Optional pressure warning
+  // ------------------------------------------------------------
+
+  if (
+    poolPeak !== null &&
+    poolPeak !== undefined &&
+    Number(poolPeak) >= 85
+  ) {
+    logLine(
+      `${capitalizeFirst(engine)} connection-pool utilization peaked at ${fmt(poolPeak, 1)}%.`,
+      'error'
+    );
+  }
+}
 
   function initPlayground() {
     qsa('.playground-tab').forEach((tab) => {
@@ -8052,6 +9739,73 @@ truncated: ${fmtBool(locust.truncated)}`;
       const network_io = parseFloat(qs('#pg-b-net').value) || undefined;
       await runPlaygroundModel('/api/prediction/bottleneck', { throughput, current_users, cpu_usage, disk_io, network_io });
     });
+
+    qs('[data-model-form="forced-flow"]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const system_throughput = parseFloat(qs('#pg-ff-throughput').value);
+      const names = (qs('#pg-ff-names').value || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const visits = parseNumList(qs('#pg-ff-visits').value);
+      const serviceTimes = parseNumList(qs('#pg-ff-service').value);
+
+      if (!names.length || names.length !== visits.length || names.length !== serviceTimes.length) {
+        const out = qs('#playgroundOutput');
+        qs('#playgroundResult').hidden = false;
+        if (out) out.textContent = 'Error: component names, visits/request, and service times must each have the same number of comma-separated values.';
+        return;
+      }
+
+      const components = {};
+      names.forEach((name, i) => {
+        components[name] = { visits_per_request: visits[i], service_time_seconds: serviceTimes[i] };
+      });
+
+      await runPlaygroundModel('/api/prediction/forced-flow', { system_throughput, components });
+    });
+
+    qs('[data-model-form="amdahl"]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = qs('#pg-amdahl-bottleneck').value.trim();
+      let bottleneck_results;
+      try {
+        bottleneck_results = JSON.parse(raw);
+      } catch (parseErr) {
+        qs('#playgroundResult').hidden = false;
+        const out = qs('#playgroundOutput');
+        if (out) out.textContent = `Error: bottleneck_results is not valid JSON — ${parseErr.message}`;
+        return;
+      }
+      await runPlaygroundModel('/api/prediction/amdahl', { bottleneck_results });
+    });
+
+    qs('[data-model-form="slo"]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const users = parseNumList(qs('#pg-slo-users').value);
+      const responseTimes = parseNumList(qs('#pg-slo-rt').value);
+      const errorRates = parseNumList(qs('#pg-slo-err').value);
+
+      if (!users.length || users.length !== responseTimes.length || users.length !== errorRates.length) {
+        qs('#playgroundResult').hidden = false;
+        const out = qs('#playgroundOutput');
+        if (out) out.textContent = 'Error: users, response times, and error rates must each have the same number of comma-separated values.';
+        return;
+      }
+
+      const levels = users.map((u, i) => ({
+        users: u,
+        response_time: responseTimes[i],
+        error_rate_percent: errorRates[i],
+        source: 'observed',
+      }));
+
+      const maxRt = parseFloat(qs('#pg-slo-max-rt').value);
+      const maxErr = parseFloat(qs('#pg-slo-max-err').value);
+
+      const body = { levels };
+      if (Number.isFinite(maxRt)) body.max_response_time_seconds = maxRt;
+      if (Number.isFinite(maxErr)) body.max_error_rate_percent = maxErr;
+
+      await runPlaygroundModel('/api/prediction/slo', body);
+    });
   }
 
   function parseNumList(str) {
@@ -8090,7 +9844,10 @@ truncated: ${fmtBool(locust.truncated)}`;
         github_url: state.githubUrl,
         generated_at: new Date().toISOString(),
         framework: state.detectionResult,
+        entry_point: state.locationResult,
         validation: state.validation,
+        dependencies: state.dependencyResult,
+        application_descriptor: state.descriptor,
         routes: state.routesResult,
         result: state.fullResult,
       };

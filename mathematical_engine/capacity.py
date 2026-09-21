@@ -3,9 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 Number = Union[int, float]
 
-# ---------------------------------------------------------------------------
-# Custom Exceptions
-# ---------------------------------------------------------------------------
+# --- Custom Exceptions ---
 
 class CapacityPlanningError(Exception):
     """Base exception for capacity planning errors."""
@@ -22,9 +20,7 @@ class InvalidTypeError(CapacityPlanningError):
 class InvalidRangeError(CapacityPlanningError):
     """Raised when value is outside valid range."""
 
-# ---------------------------------------------------------------------------
-# Configurable Constants
-# ---------------------------------------------------------------------------
+# --- Configurable Constants ---
 
 DEFAULT_SAFETY_MARGIN_RATIO = 0.80
 
@@ -80,9 +76,7 @@ ERROR_RATE_THRESHOLDS = {
 RESPONSE_TIME_THRESHOLD_MS = 2000.0
 DEFAULT_P95_RESPONSE_TIME_THRESHOLD_MS = 1000.0
 
-# ---------------------------------------------------------------------------
-# Required Input Structure
-# ---------------------------------------------------------------------------
+# --- Required Input Structure ---
 
 REQUIRED_SECTIONS = (
     "usl",
@@ -169,9 +163,7 @@ OPTIONAL_NUMERIC_FIELDS = {
     ),
 }
 
-# ---------------------------------------------------------------------------
-# Validation Helpers
-# ---------------------------------------------------------------------------
+# --- Validation Helpers ---
 
 def _is_number(value: Any) -> bool:
     return (
@@ -270,9 +262,7 @@ def validate_input(data: Dict[str, Any]) -> None:
     if "p95_response_time" in runtime and runtime["p95_response_time"] <= 0:
         raise InvalidRangeError("p95_response_time must be greater than zero if provided.")
 
-# ---------------------------------------------------------------------------
-# Bottleneck Data Handling (optional bottleneck.py integration)
-# ---------------------------------------------------------------------------
+# --- Bottleneck Data Handling (optional bottleneck.py integration) ---
 
 _BOTTLENECK_SEVERITY_RANK = {
     "Unknown": 0,
@@ -331,9 +321,7 @@ def _bottleneck_summary_fields(bottleneck: Optional[Dict[str, Any]]) -> Dict[str
 def _display_resource_name(resource: str) -> str:
     return "CPU" if resource == "cpu" else resource.capitalize()
 
-# ---------------------------------------------------------------------------
-# Capacity Calculations
-# ---------------------------------------------------------------------------
+# --- Capacity Calculations ---
 
 def calculate_arrival_rate_from_little_law(
     little_law: Dict[str, Any]
@@ -386,28 +374,36 @@ def calculate_little_law_consistency(
     }
 
 def calculate_safe_capacity(
-    capacity_reference: float,
-    queueing: Dict[str, Any],
+    breaking_point: float,
     safety_margin_ratio: float
 ) -> float:
     """
-    Calculate safe operating capacity.
+    Safe operating capacity: a safety-margined fraction of the breaking
+    point, not an independently-computed fraction of capacity_reference.
 
-    Safe capacity is based on the selected capacity reference
-    multiplied by the configured safety margin.
+    This is a deliberate fix, not the original design: safe_users used
+    to be calculated straight from capacity_reference * margin, entirely
+    independently of calculate_breaking_point()'s own min() of queue/CPU/
+    memory limits. Nothing then prevented breaking_point from coming out
+    LOWER than safe_users - e.g. capacity_reference=500 gives
+    safe_users=400, but if CPU is already running hot relative to
+    current_users (say 90% at only 100 users), breaking_point's CPU-limit
+    term could come out around 94 - producing a report that claims the
+    system is "safe" up to 400 users while also claiming it "breaks" at
+    94. Deriving safe_users from breaking_point instead makes
+    safe_users <= breaking_point true by construction, for any input,
+    rather than true only when the CPU/memory/queue limits happen to be
+    generous - which is what "one consistent classification policy"
+    actually requires.
 
-    If the queue is unstable, the current capacity is treated
-    as unsafe for extrapolated operation.
+    breaking_point already folds in queue stability (see
+    calculate_breaking_point) - there's deliberately no separate
+    stability check here anymore, since checking it again with different
+    logic (previously: exact-match "unstable" here vs. "not stable" in
+    calculate_breaking_point) was the second way these two numbers could
+    end up contradicting each other.
     """
-    stability = str(queueing["stability"]).lower()
-
-    if stability == "unstable":
-        return 0.0
-
-    return round(
-        capacity_reference * safety_margin_ratio,
-        2
-    )
+    return round(max(breaking_point, 0.0) * safety_margin_ratio, 2)
 
 def calculate_remaining_capacity(safe_users: float, current_users: Number) -> float:
     return round(max(safe_users - current_users, 0.0), 2)
@@ -494,9 +490,7 @@ def calculate_breaking_point(
         2
     )
 
-# ---------------------------------------------------------------------------
-# Resource Pressure Analysis
-# ---------------------------------------------------------------------------
+# --- Resource Pressure Analysis ---
 
 def _classify_by_thresholds(value: float, thresholds: Dict[str, float]) -> str:
     if value < thresholds["Low"]: return "Low"
@@ -534,9 +528,7 @@ def analyze_resource_pressure(
         "queue": queue_pressure,
     }
 
-# ---------------------------------------------------------------------------
-# Status Classification
-# ---------------------------------------------------------------------------
+# --- Status Classification ---
 
 _PRESSURE_RANK = {
     "Low": 0, "Normal": 0, "Moderate": 1, "High": 2, "Critical": 3,
@@ -646,9 +638,7 @@ def classify_capacity(
         return order[min(index + 1, len(order)-1)]
     return status
 
-# ---------------------------------------------------------------------------
-# Resource Scaling Estimates & Health Summary
-# ---------------------------------------------------------------------------
+# --- Resource Scaling Estimates & Health Summary ---
 
 def estimate_resource_scaling_at_breaking_point(
     runtime: Dict[str, Any],
@@ -720,9 +710,7 @@ def determine_main_risk(
     resource = max(candidates, key=candidates.get)
     return _display_resource_name(resource)
 
-# ---------------------------------------------------------------------------
-# Recommendation Engine Signals
-# ---------------------------------------------------------------------------
+# --- Recommendation Engine Signals ---
 
 def generate_signals(
     capacity_margin: float,
@@ -784,9 +772,7 @@ def generate_signals(
         "exceeds_theoretical_ceiling": bool(bottleneck and bottleneck.get("signals", {}).get("exceeds_theoretical_ceiling")),
     }
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+# --- Public API ---
 
 def analyze_capacity(
     data: Dict[str, Any],
@@ -859,10 +845,12 @@ def analyze_capacity(
         usl["peak_throughput"]
     )
     
-    # Safe users & Breaking Point now depend on the extrapolation-aware reference
-    safe_users = calculate_safe_capacity(capacity_reference, queueing, safety_margin_ratio)
-    remaining_capacity = calculate_remaining_capacity(safe_users, runtime["current_users"])
+    # Safe users & Breaking Point now depend on the extrapolation-aware reference.
+    # breaking_point is computed FIRST - safe_users is now derived from it
+    # (see calculate_safe_capacity's docstring for why the order matters).
     breaking_point = calculate_breaking_point(capacity_reference, queueing, runtime)
+    safe_users = calculate_safe_capacity(breaking_point, safety_margin_ratio)
+    remaining_capacity = calculate_remaining_capacity(safe_users, runtime["current_users"])
     
     throughput_capacity_used = calculate_throughput_capacity_used_percent(
         runtime["throughput"], usl["peak_throughput"]

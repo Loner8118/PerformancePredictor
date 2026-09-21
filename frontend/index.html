@@ -40,6 +40,7 @@
         <li><a href="#routes" class="rail__link" data-nav="routes"><svg viewBox="0 0 20 20" width="16" height="16"><circle cx="5" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="15" cy="15" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 5h4a4 4 0 0 1 4 4v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Routes</span></a></li>
         <li><a href="#load-testing" class="rail__link" data-nav="load-testing"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 15l4-4 3 3 5-7 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Load Testing</span></a></li>
         <li><a href="#runtime" class="rail__link" data-nav="runtime"><svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v4l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Runtime Metrics</span></a></li>
+        <li><a href="#database-monitoring" class="rail__link" data-nav="database-monitoring"><svg viewBox="0 0 20 20" width="16" height="16"><ellipse cx="10" cy="5" rx="6" ry="2.5"fill="none"stroke="currentColor"stroke-width="1.6"/><path d="M4 5v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V5"fill="none"stroke="currentColor"stroke-width="1.6"/><path d="M4 10v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5"fill="none"stroke="currentColor"stroke-width="1.6"/></svg><span>Database Monitoring</span></a></li>
       </ul>
 
       <p class="rail__group-label">Predict</p>
@@ -48,8 +49,11 @@
         <li><a href="#littles-law" class="rail__link" data-nav="littles-law"><svg viewBox="0 0 20 20" width="16" height="16"><text x="3" y="14" font-size="11" fill="currentColor" font-family="serif" font-style="italic">L=λW</text></svg><span>Little's Law</span></a></li>
         <li><a href="#queueing" class="rail__link" data-nav="queueing"><svg viewBox="0 0 20 20" width="16" height="16"><rect x="2" y="8" width="3" height="3" fill="currentColor"/><rect x="6" y="8" width="3" height="3" fill="currentColor"/><rect x="10" y="8" width="3" height="3" fill="currentColor" opacity=".4"/><path d="M15 6v8" stroke="currentColor" stroke-width="1.6"/></svg><span>Queueing Theory</span></a></li>
         <li><a href="#bottleneck" class="rail__link" data-nav="bottleneck"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 10h5l2-6 2 12 2-6h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="10" r="1.4" fill="currentColor"/></svg><span>Bottleneck</span></a></li>
+        <li><a href="#forced-flow" class="rail__link" data-nav="forced-flow"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M3 6h5a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="3" cy="6" r="1.3" fill="currentColor"/><circle cx="17" cy="14" r="1.3" fill="currentColor"/></svg><span>Forced Flow</span></a></li>
+        <li><a href="#amdahl" class="rail__link" data-nav="amdahl"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 15c3 0 4-9 8-9s5 9 8 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10 6v9" stroke="currentColor" stroke-width="1.2" stroke-dasharray="1.6 1.6"/></svg><span>Amdahl's Law</span></a></li>
         <li><a href="#capacity" class="rail__link" data-nav="capacity"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M3 17V9M9 17V3M15 17v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Capacity Planning</span></a></li>
         <li><a href="#scalability" class="rail__link" data-nav="scalability"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M2 17 8 9l3 3 6-8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.2 2.2"/></svg><span>Future Load</span></a></li>
+        <li><a href="#slo" class="rail__link" data-nav="slo"><svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 10.5l2.3 2.3L14 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SLO</span></a></li>
         <li><a href="#recommendations" class="rail__link" data-nav="recommendations"><svg viewBox="0 0 20 20" width="16" height="16"><path d="M10 2l2 5 5 .5-3.8 3.4 1.1 5.1-4.3-2.6-4.3 2.6 1.1-5.1L3 7.5 8 7Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Recommendations</span></a></li>
       </ul>
 
@@ -95,14 +99,15 @@
       <ol class="pipeline-track__list" id="pipelineTrackList">
         <li class="ptrack__node" data-stage="clone" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">1</span></span><span class="ptrack__label">Clone</span></li>
         <li class="ptrack__node" data-stage="detect" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">2</span></span><span class="ptrack__label">Detect</span></li>
-        <li class="ptrack__node" data-stage="entry" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">3</span></span><span class="ptrack__label">Entry point</span></li>
-        <li class="ptrack__node" data-stage="validate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">4</span></span><span class="ptrack__label">Validate</span></li>
-        <li class="ptrack__node" data-stage="build" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">5</span></span><span class="ptrack__label">Build</span></li>
-        <li class="ptrack__node" data-stage="run" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">6</span></span><span class="ptrack__label">Run</span></li>
-        <li class="ptrack__node" data-stage="health" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">7</span></span><span class="ptrack__label">Health</span></li>
-        <li class="ptrack__node" data-stage="routes" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">8</span></span><span class="ptrack__label">Routes</span></li>
-        <li class="ptrack__node" data-stage="generate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">9</span></span><span class="ptrack__label">Generate</span></li>
-        <li class="ptrack__node" data-stage="loadtest" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">10</span></span><span class="ptrack__label">Load test</span></li>
+        <li class="ptrack__node" data-stage="deps" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">3</span></span><span class="ptrack__label">Dependencies</span></li>
+        <li class="ptrack__node" data-stage="entry" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">4</span></span><span class="ptrack__label">Entry point</span></li>
+        <li class="ptrack__node" data-stage="validate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">5</span></span><span class="ptrack__label">Validate</span></li>
+        <li class="ptrack__node" data-stage="build" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">6</span></span><span class="ptrack__label">Build</span></li>
+        <li class="ptrack__node" data-stage="run" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">7</span></span><span class="ptrack__label">Run</span></li>
+        <li class="ptrack__node" data-stage="health" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">8</span></span><span class="ptrack__label">Health</span></li>
+        <li class="ptrack__node" data-stage="routes" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">9</span></span><span class="ptrack__label">Routes</span></li>
+        <li class="ptrack__node" data-stage="generate" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">10</span></span><span class="ptrack__label">Generate</span></li>
+        <li class="ptrack__node" data-stage="loadtest" data-status="pending"><span class="ptrack__dot"><span class="ptrack__num">11</span></span><span class="ptrack__label">Load test</span></li>
       </ol>
       <div class="pipeline-track__progress" id="pipelineTrackProgress" aria-hidden="true"></div>
     </div>
@@ -521,7 +526,146 @@
           </div>
         
         </div>
-      
+
+<!-- ========================================================
+    DEPENDENCY DETECTION / APPLICATION DESCRIPTOR
+    ======================================================== -->
+
+<div class="repo-grid repo-grid--analysis">
+
+  <div class="panel">
+
+    <div class="panel__head panel__head--row">
+
+      <div>
+        <span class="section-label">INFRASTRUCTURE</span>
+        <h3>Dependency detection</h3>
+        <p>
+          Database and cache dependencies inferred from manifests,
+          docker-compose service images, and config/env files.
+        </p>
+      </div>
+
+      <span class="badge badge--neutral" id="dependencyStatusBadge">
+        Pending
+      </span>
+
+    </div>
+
+    <div class="kv-grid">
+
+      <div class="kv-grid__item">
+        <span>Database</span>
+        <strong id="dep-database">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Database confidence</span>
+        <strong id="dep-database-confidence">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Cache</span>
+        <strong id="dep-cache">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Cache confidence</span>
+        <strong id="dep-cache-confidence">—</strong>
+      </div>
+
+    </div>
+
+    <div class="entry-point-footer">
+      <span>Other dependencies detected</span>
+      <span class="badge badge--neutral" id="dep-other-count">0</span>
+    </div>
+
+    <div class="signal-list" id="dep-other-list">
+      <div class="signal-empty">
+        Dependency detection has not been run yet.
+      </div>
+    </div>
+
+    <div id="dep-notes" class="note-list">
+      <p class="empty-note">No dependency notes yet.</p>
+    </div>
+
+  </div>
+
+
+  <div class="panel">
+
+    <div class="panel__head panel__head--row">
+
+      <div>
+        <span class="section-label">NORMALIZED</span>
+        <h3>Application descriptor</h3>
+        <p>
+          Framework, entry point, runtime, routes, and dependency
+          data merged into one framework-independent shape.
+        </p>
+      </div>
+
+      <span class="badge badge--neutral" id="descriptorStatusBadge">
+        Not built
+      </span>
+
+    </div>
+
+    <div class="kv-grid">
+
+      <div class="kv-grid__item">
+        <span>Overall confidence</span>
+        <strong id="desc-confidence">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Ambiguous</span>
+        <strong id="desc-ambiguous">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Route count</span>
+        <strong id="desc-route-count" class="mono">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Route discovery tier</span>
+        <strong id="desc-route-tier">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Host / port</span>
+        <strong id="desc-host-port" class="mono">—</strong>
+      </div>
+
+      <div class="kv-grid__item">
+        <span>Ready for load testing</span>
+        <strong id="desc-ready">—</strong>
+      </div>
+
+    </div>
+
+    <div class="entry-point-footer">
+      <span>Pipeline readiness</span>
+    </div>
+
+    <div class="kv-grid" id="desc-readiness">
+      <div class="kv-grid__item">
+        <span>—</span>
+        <strong>—</strong>
+      </div>
+    </div>
+
+    <div id="desc-notes" class="note-list">
+      <p class="empty-note">Build the descriptor to see notes.</p>
+    </div>
+
+  </div>
+
+</div>
+
       
         <!-- ========================================================
             VALIDATION
@@ -894,573 +1038,1017 @@
             <div class="chart-frame"><canvas id="errorChart" height="130"></canvas></div>
           </div>
         </div>
-      </section>
+        </section>
 
       <!-- ========================================================== -->
-      <!-- USL — UNIVERSAL SCALABILITY LAW                            -->
+      <!-- DATABASE MONITORING                                        -->
       <!-- ========================================================== -->
-      <section id="usl" class="view" data-view="usl">
-      
-        <!-- Header -->
+
+      <section
+        id="database-monitoring"
+        class="view"
+        data-view="database-monitoring"
+      >
+
         <div class="view__head">
+          <h2>Database Monitoring</h2>
+        
+          <p>
+            Automatic database and cache pressure observed during the load test.
+          </p>
+        </div>
+
+      <!-- ======================================================== -->
+      <!-- DATABASE / CACHE MONITORING                              -->
+      <!-- ======================================================== -->
+
+      <div class="panel">
+      
+        <div class="panel__head panel__head--row">
           <div>
-            <h2>Scalability — Universal Scalability Law</h2>
+            <span class="section-label">AUTOMATIC</span>
+          
+            <h3>Database / cache monitoring</h3>
+          
+            <p class="muted">
+              Performance Predictor automatically detects supported database or
+              cache dependencies and collects live connection-pool pressure
+              during the load test when usable runtime configuration is available.
+            </p>
+          </div>
+        
+          <span class="badge badge--neutral" id="dbMonitorStatusBadge">
+            Waiting
+          </span>
+        </div>
+      
+      
+        <!-- Detection summary -->
+      
+        <div class="kv-grid">
+        
+          <div class="kv-grid__item">
+            <span>Detected engine</span>
+            <strong id="dbMonitorDetectedEngine" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Configuration source</span>
+            <strong id="dbMonitorDetectedSource" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Monitoring host</span>
+            <strong id="dbMonitorDetectedHost" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Monitoring mode</span>
+            <strong class="mono">
+              Automatic
+            </strong>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Runtime metrics -->
+      
+        <div class="kv-grid">
+        
+          <div class="kv-grid__item">
+            <span>Active connections (avg / peak)</span>
+            <strong id="dbMonitorActiveConn" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Max connections</span>
+            <strong id="dbMonitorMaxConn" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Pool utilization (avg / peak)</span>
+            <strong id="dbMonitorPoolUtil" class="mono">
+              —
+            </strong>
+          </div>
+        
+          <div class="kv-grid__item">
+            <span>Samples collected</span>
+            <strong id="dbMonitorSampleCount" class="mono">
+              —
+            </strong>
+          </div>
+        
+        </div>
+      
+      
+        <!-- Monitoring note -->
+      
+        <div class="callout callout--neutral" id="dbMonitorMessage">
+          <div class="callout__icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="18" height="18">
+              <circle
+                cx="10"
+                cy="10"
+                r="7"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M10 8v5M10 5.8v.2"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+        
+          <div>
+            <strong>Automatic monitoring</strong>
+          
             <p>
-              Fits contention (σ) and coherency (κ) to the measured throughput
-              curve, then estimates scalability beyond the tested load range.
+              Database credentials are resolved on the backend and are never
+              displayed in the interface. If the repository does not contain
+              usable runtime configuration, the performance analysis continues
+              without database metrics.
             </p>
           </div>
         </div>
       
       
-        <!-- ======================================================== -->
-        <!-- MODEL STATUS                                             -->
-        <!-- ======================================================== -->
+        <!-- Error -->
       
-        <div class="panel usl-status-panel">
-        
-          <div class="panel__head panel__head--row">
-            <div>
-              <h3>USL model assessment</h3>
-              <p>
-                Summary of model fit quality, tested range and extrapolation reliability.
-              </p>
-            </div>
-          
-            <div class="usl-status-badges">
-              <span class="badge badge--neutral" id="uslFitStatus">
-                Fit unavailable
-              </span>
-            
-              <span class="badge badge--neutral" id="uslReliabilityBadge">
-                Reliability unavailable
-              </span>
-            </div>
-          </div>
-        
-          <div class="usl-status-grid">
-          
-            <div class="usl-status-item">
-              <span class="usl-status-item__label">Tested range</span>
-              <strong class="usl-status-item__value mono" id="usl-tested-range">
-                —
-              </strong>
-              <span class="usl-status-item__hint">
-                concurrent users
-              </span>
-            </div>
-          
-            <div class="usl-status-item">
-              <span class="usl-status-item__label">Observations</span>
-              <strong class="usl-status-item__value mono" id="usl-observations">
-                —
-              </strong>
-              <span class="usl-status-item__hint">
-                load levels used for fitting
-              </span>
-            </div>
-          
-            <div class="usl-status-item">
-              <span class="usl-status-item__label">Peak inside tested range</span>
-              <strong class="usl-status-item__value" id="usl-peak-range">
-                —
-              </strong>
-              <span class="usl-status-item__hint">
-                affects confidence in N*
-              </span>
-            </div>
-          
-            <div class="usl-status-item">
-              <span class="usl-status-item__label">Extrapolated points</span>
-              <strong class="usl-status-item__value mono" id="usl-extrapolated-count">
-                —
-              </strong>
-              <span class="usl-status-item__hint">
-                beyond measured range
-              </span>
-            </div>
-          
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- MAIN USL CURVE                                           -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head panel__head--row">
-          
-            <div>
-              <h3>USL scalability curve</h3>
-              <p>
-                Measured throughput compared with the fitted USL model and
-                future extrapolations.
-              </p>
-            </div>
-          
-            <div class="chart-legend">
-            
-              <span class="legend-chip">
-                <span class="legend-swatch legend-swatch--measured"></span>
-                Measured
-              </span>
-            
-              <span class="legend-chip">
-                <span class="legend-swatch legend-swatch--predicted"></span>
-                USL fitted / predicted
-              </span>
-            
-              <span class="legend-chip">
-                <span class="legend-swatch legend-swatch--warning"></span>
-                95% confidence range
-              </span>
-            
-            </div>
-          
-          </div>
-        
-          <div class="chart-frame chart-frame--tall">
-            <canvas id="uslChart"></canvas>
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- CORE USL METRICS                                         -->
-        <!-- ======================================================== -->
-      
-        <div class="param-row">
-        
-          <div class="param-card">
-            <span class="param-card__label">σ · Contention</span>
-            <span class="param-card__value mono" id="usl-sigma">—</span>
-          </div>
-        
-          <div class="param-card">
-            <span class="param-card__label">κ · Coherency</span>
-            <span class="param-card__value mono" id="usl-kappa">—</span>
-          </div>
-        
-          <div class="param-card">
-            <span class="param-card__label">Baseline throughput</span>
-            <span class="param-card__value mono" id="usl-baseline">—</span>
-            <span class="param-card__hint">req/s</span>
-          </div>
-        
-          <div class="param-card">
-            <span class="param-card__label">Peak throughput</span>
-            <span class="param-card__value mono" id="usl-peak">—</span>
-            <span class="param-card__hint">req/s</span>
-          </div>
-        
-          <div class="param-card">
-            <span class="param-card__label">Optimal users N*</span>
-            <span class="param-card__value mono" id="usl-optimal">—</span>
-          </div>
-        
-          <div class="param-card">
-            <span class="param-card__label">Saturation point</span>
-            <span class="param-card__value mono" id="usl-saturation">—</span>
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- FIT QUALITY + CLASSIFICATION                             -->
-        <!-- ======================================================== -->
-      
-        <div class="usl-analysis-grid">
-        
-          <!-- Fit quality -->
-          <div class="panel usl-quality-panel">
-          
-            <div class="panel__head">
-            
-              <div>
-                <h3>Model fit quality</h3>
-                <p>
-                  How closely the fitted USL curve explains the measured throughput.
-                </p>
-              </div>
-            
-              <span class="badge badge--neutral" id="uslFitStatusSecondary">
-                —
-              </span>
-            
-            </div>
-          
-            <div class="fit-metrics">
-            
-              <div class="fit-metric">
-                <span>R²</span>
-                <strong id="usl-r2">—</strong>
-                <small>in-sample fit</small>
-              </div>
-            
-              <div class="fit-metric">
-                <span>RMSE</span>
-                <strong id="usl-rmse">—</strong>
-                <small>req/s</small>
-              </div>
-            
-              <div class="fit-metric">
-                <span>LOO R²</span>
-                <strong id="usl-loo-r2">—</strong>
-                <small>cross-validation</small>
-              </div>
-            
-            </div>
-          
-            <div class="usl-fit-summary">
-              <span>Fit interpretation</span>
-              <strong id="usl-fit-summary">
-                No fit assessment available.
-              </strong>
-            </div>
-          
-          </div>
-        
-        
-          <!-- Classification -->
-          <div class="panel">
-          
-            <div class="panel__head">
-            
-              <div>
-                <h3>Scalability classification</h3>
-                <p>
-                  Shape of the fitted throughput curve based on σ and κ.
-                </p>
-              </div>
-            
-            </div>
-          
-            <div class="classification-box">
-            
-              <span
-                class="badge badge--neutral"
-                id="uslClassification">
-                —
-              </span>
-            
-              <p id="uslClassificationDescription">
-                No classification available.
-              </p>
-            
-            </div>
-          
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- PARAMETER INTERPRETATION                                 -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head">
-          
-            <div>
-              <h3>Parameter interpretation</h3>
-              <p>
-                What the fitted USL parameters represent in the application.
-              </p>
-            </div>
-          
-          </div>
-        
-          <div class="interpretation-grid">
-          
-            <div class="interpretation-card">
-            
-              <div class="interpretation-card__symbol">
-                σ
-              </div>
-            
-              <div>
-                <strong>Contention overhead</strong>
-              
-                <p id="uslSigmaInterpretation">
-                  —
-                </p>
-              </div>
-            
-            </div>
-          
-          
-            <div class="interpretation-card">
-            
-              <div class="interpretation-card__symbol">
-                κ
-              </div>
-            
-              <div>
-                <strong>Coherency overhead</strong>
-              
-                <p id="uslKappaInterpretation">
-                  —
-                </p>
-              </div>
-            
-            </div>
-          
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- PARAMETER UNCERTAINTY                                    -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head">
-          
-            <div>
-              <h3>Parameter uncertainty</h3>
-              <p>
-                Standard errors indicate how strongly the current measurements
-                identify the fitted USL parameters.
-              </p>
-            </div>
-          
-          </div>
-        
-          <div class="fit-metrics">
-          
-            <div class="fit-metric">
-              <span>σ standard error</span>
-              <strong class="mono" id="usl-sigma-stderr">—</strong>
-            </div>
-          
-            <div class="fit-metric">
-              <span>κ standard error</span>
-              <strong class="mono" id="usl-kappa-stderr">—</strong>
-            </div>
-          
-            <div class="fit-metric">
-              <span>κ relative uncertainty</span>
-              <strong class="mono" id="usl-kappa-relative-uncertainty">—</strong>
-            </div>
-          
-          </div>
-        
-          <div class="usl-note" id="uslUncertaintyNote">
-            Parameter uncertainty assessment is not available.
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- OBSERVED VS PREDICTED                                    -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head panel__head--row">
-          
-            <div>
-              <h3>Observed vs USL model</h3>
-              <p>
-                Comparison between measured throughput and the fitted USL curve
-                at every tested load level.
-              </p>
-            </div>
-          
-            <span class="badge badge--neutral" id="uslResidualBadge">
+        <div class="kv-grid">
+          <div class="kv-grid__item kv-grid__item--wide">
+            <span>Monitoring status / error</span>
+            <strong id="dbMonitorError">
               —
-            </span>
-          
+            </strong>
           </div>
-        
-          <div class="table-wrap">
-          
-            <table class="data-table data-table--numeric">
-            
-              <thead>
-                <tr>
-                  <th>Users</th>
-                  <th>Observed throughput</th>
-                  <th>USL predicted</th>
-                  <th>Residual</th>
-                  <th>Deviation</th>
-                </tr>
-              </thead>
-            
-              <tbody id="uslObservedTableBody">
-              
-                <tr>
-                  <td colspan="5" class="data-table__empty">
-                    Run the pipeline to see model fit.
-                  </td>
-                </tr>
-              
-              </tbody>
-            
-            </table>
-          
-          </div>
-        
         </div>
       
-      
-        <!-- ======================================================== -->
-        <!-- FUTURE PREDICTIONS                                       -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head panel__head--row">
-          
-            <div>
-              <h3>Predictions at untested load</h3>
-              <p>
-                Model-based throughput estimates beyond the highest tested
-                concurrency level.
-              </p>
-            </div>
-          
-            <span class="badge badge--warning" id="uslPredictionStatus">
-              Extrapolated
-            </span>
-          
-          </div>
-        
-          <div class="table-wrap">
-          
-            <table
-              class="data-table data-table--numeric"
-              id="uslPredictionTable">
+      </div>
 
-              <thead>
-              
-                <tr>
-                  <th>Users</th>
-                  <th>Predicted throughput</th>
-                  <th>Efficiency</th>
-                  <th>95% confidence interval</th>
-                  <th>Prediction status</th>
-                </tr>
-              
-              </thead>
-            
-              <tbody id="uslPredictionTableBody">
-              
-                <tr>
-                  <td colspan="5" class="data-table__empty">
-                    Run the pipeline to see predictions.
-                  </td>
-                </tr>
-              
-              </tbody>
-            
-            </table>
-          
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- EXTRAPOLATION WARNING                                    -->
-        <!-- ======================================================== -->
-      
-        <div
-          class="panel usl-warning-panel"
-          id="uslExtrapolationPanel"
-          hidden>
-
-          <div class="usl-warning">
-          
-            <div class="usl-warning__icon">
-              !
-            </div>
-          
-            <div>
-            
-              <h3>Extrapolation warning</h3>
-            
-              <p id="uslExtrapolationWarning">
-                Predictions beyond the tested range are model-based estimates
-                and should be interpreted with caution.
-              </p>
-            
-            </div>
-          
-          </div>
-        
-        </div>
-      
-      
-        <!-- ======================================================== -->
-        <!-- USL MODEL SUMMARY                                        -->
-        <!-- ======================================================== -->
-      
-        <div class="panel">
-        
-          <div class="panel__head">
-          
-            <div>
-              <h3>USL interpretation summary</h3>
-              <p>
-                A concise interpretation of the mathematical model results.
-              </p>
-            </div>
-          
-          </div>
-        
-          <div class="usl-summary-grid">
-          
-            <div class="usl-summary-item">
-              <span class="usl-summary-item__label">
-                Scaling behavior
-              </span>
-              <strong id="uslSummaryClassification">
-                —
-              </strong>
-            </div>
-          
-            <div class="usl-summary-item">
-              <span class="usl-summary-item__label">
-                Theoretical optimum
-              </span>
-              <strong id="uslSummaryOptimal">
-                —
-              </strong>
-            </div>
-          
-            <div class="usl-summary-item">
-              <span class="usl-summary-item__label">
-                Peak throughput
-              </span>
-              <strong id="uslSummaryPeak">
-                —
-              </strong>
-            </div>
-          
-            <div class="usl-summary-item">
-              <span class="usl-summary-item__label">
-                Extrapolation confidence
-              </span>
-              <strong id="uslSummaryReliability">
-                —
-              </strong>
-            </div>
-          
-          </div>
-        
-        </div>
-      
       </section>
+
+
+<!-- ========================================================== -->
+
+<!-- USL — UNIVERSAL SCALABILITY LAW                            -->
+
+<!-- ========================================================== -->
+
+<section id="usl" class="view" data-view="usl">
+
+  <!-- ======================================================== -->
+
+  <!-- HEADER                                                   -->
+
+  <!-- ======================================================== -->
+
+  <div class="view__head">
+    <div>
+      <h2>Scalability — Universal Scalability Law</h2>
+      <p>
+        Measures how throughput changes with concurrency and fits the
+        Universal Scalability Law to the tested load levels.
+      </p>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- MODEL STATUS                                             -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel usl-status-panel">
+
+<div class="panel__head panel__head--row">
+
+  <div>
+    <h3>USL model assessment</h3>
+    <p>
+      Shows the measured range, model-fit status, and whether
+      extrapolation beyond the tested range is supported by the model.
+    </p>
+  </div>
+
+  <div class="usl-status-badges">
+
+    <span class="badge badge--neutral" id="uslFitStatus">
+      Fit unavailable
+    </span>
+
+    <span class="badge badge--neutral" id="uslReliabilityBadge">
+      Extrapolation unavailable
+    </span>
+
+  </div>
+
+</div>
+
+
+<div class="usl-status-grid">
+
+  <div class="usl-status-item">
+    <span class="usl-status-item__label">Tested range</span>
+
+    <strong
+      class="usl-status-item__value mono"
+      id="usl-tested-range">
+      —
+    </strong>
+
+    <span class="usl-status-item__hint">
+      measured concurrent users
+    </span>
+  </div>
+
+
+  <div class="usl-status-item">
+    <span class="usl-status-item__label">Observations</span>
+
+    <strong
+      class="usl-status-item__value mono"
+      id="usl-observations">
+      —
+    </strong>
+
+    <span class="usl-status-item__hint">
+      load levels used by the model
+    </span>
+  </div>
+
+
+  <div class="usl-status-item">
+    <span class="usl-status-item__label">
+      Observed peak in range
+    </span>
+
+    <strong
+      class="usl-status-item__value"
+      id="usl-peak-range">
+      —
+    </strong>
+
+    <span class="usl-status-item__hint">
+      whether the measured range contains its highest observed throughput
+    </span>
+  </div>
+
+
+  <div class="usl-status-item">
+    <span class="usl-status-item__label">
+      Extrapolated points
+    </span>
+
+    <strong
+      class="usl-status-item__value mono"
+      id="usl-extrapolated-count">
+      —
+    </strong>
+
+    <span class="usl-status-item__hint">
+      requested model estimates beyond the tested range
+    </span>
+  </div>
+
+</div>
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- MAIN USL CHART                                           -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+<div class="panel__head panel__head--row">
+
+  <div>
+    <h3>Throughput scaling</h3>
+
+    <p>
+      Measured throughput is shown separately from throughput estimated
+      by the fitted USL model.
+    </p>
+  </div>
+
+  <div class="chart-legend">
+
+    <span class="legend-chip">
+      <span class="legend-swatch legend-swatch--measured"></span>
+      Measured
+    </span>
+
+    <span class="legend-chip">
+      <span class="legend-swatch legend-swatch--predicted"></span>
+      USL model
+    </span>
+
+    <span class="legend-chip">
+      <span class="legend-swatch legend-swatch--warning"></span>
+      95% model interval
+    </span>
+
+  </div>
+
+</div>
+
+
+<div class="usl-chart-note">
+  <strong>Important:</strong>
+  USL estimates throughput scaling only. It does not directly predict
+  response time, error rate, CPU usage, memory usage, I/O usage, or SLO compliance.
+</div>
+
+
+<div class="chart-frame chart-frame--tall">
+  <canvas id="uslChart"></canvas>
+</div>
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- CORE MODEL PARAMETERS                                    -->
+
+  <!-- ======================================================== -->
+
+  <div class="param-row">
+
+<div class="param-card">
+  <span class="param-card__label">
+    σ · Contention
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-sigma">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    fitted parameter
+  </span>
+</div>
+
+
+<div class="param-card">
+  <span class="param-card__label">
+    κ · Coherency
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-kappa">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    fitted parameter
+  </span>
+</div>
+
+
+<div class="param-card">
+  <span class="param-card__label">
+    Baseline throughput
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-baseline">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    req/s
+  </span>
+</div>
+
+
+<div class="param-card">
+  <span class="param-card__label">
+    Model peak throughput
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-peak">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    model-derived
+  </span>
+</div>
+
+
+<div class="param-card">
+  <span class="param-card__label">
+    Theoretical optimum N*
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-optimal">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    model-derived users
+  </span>
+</div>
+
+
+<div class="param-card">
+  <span class="param-card__label">
+    Model saturation point
+  </span>
+
+  <span
+    class="param-card__value mono"
+    id="usl-saturation">
+    —
+  </span>
+
+  <span class="param-card__hint">
+    model-derived
+  </span>
+</div>
+
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- FIT QUALITY + CLASSIFICATION                             -->
+
+  <!-- ======================================================== -->
+
+  <div class="usl-analysis-grid">
+
+<!-- FIT QUALITY -->
+
+<div class="panel usl-quality-panel">
+
+  <div class="panel__head">
+
+    <div>
+      <h3>Model fit quality</h3>
+
+      <p>
+        Measures how closely the fitted USL curve represents
+        the measured throughput observations.
+      </p>
+    </div>
+
+    <span
+      class="badge badge--neutral"
+      id="uslFitStatusSecondary">
+      —
+    </span>
+
+  </div>
+
+
+  <div class="fit-metrics">
+
+    <div class="fit-metric">
+      <span>R²</span>
+
+      <strong id="usl-r2">
+        —
+      </strong>
+
+      <small>
+        in-sample fit
+      </small>
+    </div>
+
+
+    <div class="fit-metric">
+      <span>RMSE</span>
+
+      <strong id="usl-rmse">
+        —
+      </strong>
+
+      <small>
+        req/s
+      </small>
+    </div>
+
+
+    <div class="fit-metric">
+      <span>LOO R²</span>
+
+      <strong id="usl-loo-r2">
+        —
+      </strong>
+
+      <small>
+        leave-one-out validation
+      </small>
+    </div>
+
+  </div>
+
+
+  <div class="usl-fit-summary">
+
+    <span>
+      Fit interpretation
+    </span>
+
+    <strong id="usl-fit-summary">
+      No fit assessment available.
+    </strong>
+
+  </div>
+
+</div>
+
+
+<!-- CLASSIFICATION -->
+
+<div class="panel">
+
+  <div class="panel__head">
+
+    <div>
+      <h3>Scalability behavior</h3>
+
+      <p>
+        Backend classification of the observed USL scaling behavior.
+      </p>
+    </div>
+
+  </div>
+
+
+  <div class="classification-box">
+
+    <span
+      class="badge badge--neutral"
+      id="uslClassification">
+      —
+    </span>
+
+    <p id="uslClassificationDescription">
+      No classification available.
+    </p>
+
+  </div>
+
+</div>
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- PARAMETER INTERPRETATION                                 -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+<div class="panel__head">
+
+  <div>
+    <h3>Parameter interpretation</h3>
+
+    <p>
+      Interpretation supplied by the mathematical engine for
+      the fitted USL parameters.
+    </p>
+  </div>
+
+</div>
+
+
+<div class="interpretation-grid">
+
+  <div class="interpretation-card">
+
+    <div class="interpretation-card__symbol">
+      σ
+    </div>
+
+    <div>
+
+      <strong>
+        Contention
+      </strong>
+
+      <p id="uslSigmaInterpretation">
+        —
+      </p>
+
+    </div>
+
+  </div>
+
+
+  <div class="interpretation-card">
+
+    <div class="interpretation-card__symbol">
+      κ
+    </div>
+
+    <div>
+
+      <strong>
+        Coherency
+      </strong>
+
+      <p id="uslKappaInterpretation">
+        —
+      </p>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- PARAMETER UNCERTAINTY                                    -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+
+<div class="panel__head">
+
+  <div>
+    <h3>Parameter uncertainty</h3>
+
+    <p>
+      Indicates how precisely the current measurements identify
+      the fitted USL parameters.
+    </p>
+  </div>
+
+</div>
+
+
+<div class="fit-metrics">
+
+  <div class="fit-metric">
+
+    <span>
+      σ standard error
+    </span>
+
+    <strong
+      class="mono"
+      id="usl-sigma-stderr">
+      —
+    </strong>
+
+  </div>
+
+
+  <div class="fit-metric">
+
+    <span>
+      κ standard error
+    </span>
+
+    <strong
+      class="mono"
+      id="usl-kappa-stderr">
+      —
+    </strong>
+
+  </div>
+
+
+  <div class="fit-metric">
+
+    <span>
+      κ relative uncertainty
+    </span>
+
+    <strong
+      class="mono"
+      id="usl-kappa-relative-uncertainty">
+      —
+    </strong>
+
+  </div>
+
+</div>
+
+
+<div
+  class="usl-note"
+  id="uslUncertaintyNote">
+  Parameter uncertainty assessment is not available.
+</div>
+
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- OBSERVED VS MODEL                                        -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+
+<div class="panel__head panel__head--row">
+
+  <div>
+
+    <h3>
+      Observed vs USL model
+    </h3>
+
+    <p>
+      Compares measured throughput with the throughput calculated
+      by the fitted USL model at each tested load level.
+    </p>
+
+  </div>
+
+
+  <span
+    class="badge badge--neutral"
+    id="uslResidualBadge">
+    —
+  </span>
+
+</div>
+
+
+<div class="table-wrap">
+
+  <table class="data-table data-table--numeric">
+
+    <thead>
+
+      <tr>
+        <th>Users</th>
+        <th>Observed throughput</th>
+        <th>USL model</th>
+        <th>Residual</th>
+        <th>Absolute error</th>
+      </tr>
+
+    </thead>
+
+
+    <tbody id="uslObservedTableBody">
+
+      <tr>
+
+        <td
+          colspan="5"
+          class="data-table__empty">
+
+          Run the pipeline to see the model comparison.
+
+        </td>
+
+      </tr>
+
+    </tbody>
+
+  </table>
+
+</div>
+
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- FUTURE / UNTESTED LOAD                                   -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+
+<div class="panel__head panel__head--row">
+
+  <div>
+
+    <h3>
+      Model estimates at untested load
+    </h3>
+
+    <p>
+      Throughput estimates generated by the USL model for requested
+      concurrency levels that were not directly measured.
+    </p>
+
+  </div>
+
+
+  <span
+    class="badge badge--warning"
+    id="uslPredictionStatus">
+    Model estimates
+  </span>
+
+</div>
+
+
+<div class="table-wrap">
+
+  <table
+    class="data-table data-table--numeric"
+    id="uslPredictionTable">
+
+    <thead>
+
+      <tr>
+        <th>Users</th>
+        <th>Estimated throughput</th>
+        <th>Relative efficiency</th>
+        <th>95% model interval</th>
+        <th>Status</th>
+      </tr>
+
+    </thead>
+
+
+    <tbody id="uslPredictionTableBody">
+
+      <tr>
+
+        <td
+          colspan="5"
+          class="data-table__empty">
+
+          No model estimates available.
+
+        </td>
+
+      </tr>
+
+    </tbody>
+
+  </table>
+
+</div>
+
+
+<div class="usl-model-note">
+
+  These values are mathematical model estimates, not measurements.
+  They should not be interpreted as guaranteed capacity or safe user limits.
+
+</div>
+
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- EXTRAPOLATION WARNING                                    -->
+
+  <!-- ======================================================== -->
+
+  <div
+    class="panel usl-warning-panel"
+    id="uslExtrapolationPanel"
+    hidden>
+
+<div class="usl-warning">
+
+  <div class="usl-warning__icon">
+    !
+  </div>
+
+  <div>
+
+    <h3>
+      Extrapolation warning
+    </h3>
+
+    <p id="uslExtrapolationWarning">
+      Model estimates extend beyond the measured load range.
+    </p>
+
+  </div>
+
+</div>
+
+  </div>
+
+  <!-- ======================================================== -->
+
+  <!-- USL SUMMARY                                              -->
+
+  <!-- ======================================================== -->
+
+  <div class="panel">
+
+<div class="panel__head">
+
+  <div>
+
+    <h3>
+      USL interpretation summary
+    </h3>
+
+    <p>
+      Summary of the mathematical model results. These values are
+      not a replacement for capacity or SLO analysis.
+    </p>
+
+  </div>
+
+</div>
+
+
+<div class="usl-summary-grid">
+
+  <div class="usl-summary-item">
+
+    <span class="usl-summary-item__label">
+      Scaling behavior
+    </span>
+
+    <strong id="uslSummaryClassification">
+      —
+    </strong>
+
+  </div>
+
+
+  <div class="usl-summary-item">
+
+    <span class="usl-summary-item__label">
+      Theoretical optimum
+    </span>
+
+    <strong id="uslSummaryOptimal">
+      —
+    </strong>
+
+  </div>
+
+
+  <div class="usl-summary-item">
+
+    <span class="usl-summary-item__label">
+      Model peak throughput
+    </span>
+
+    <strong id="uslSummaryPeak">
+      —
+    </strong>
+
+  </div>
+
+
+  <div class="usl-summary-item">
+
+    <span class="usl-summary-item__label">
+      Extrapolation reliability
+    </span>
+
+    <strong id="uslSummaryReliability">
+      —
+    </strong>
+
+  </div>
+
+</div>
+
+
+  </div>
+
+</section>
+
 
       <!-- ========================================================== -->
       <!-- LITTLE'S LAW                                               -->
@@ -2726,6 +3314,309 @@
         
         </div>
       
+      </section>
+
+
+<!-- ========================================================== -->
+<!-- FORCED FLOW LAW                                           -->
+<!-- ========================================================== -->
+<section id="forced-flow" class="view" data-view="forced-flow">
+
+  <div class="view__head">
+    <h2>Forced Flow Law</h2>
+    <p>
+      Estimates component-level throughput and service demand using
+      X<sub>i</sub> = X·V<sub>i</sub> and D<sub>i</sub> = V<sub>i</sub>·S<sub>i</sub>.
+      This analysis is intended for components such as databases, caches,
+      and external APIs where OS-level utilization may not be directly available.
+    </p>
+  </div>
+
+  <!-- Availability -->
+  <div class="panel">
+    <div class="panel__head panel__head--row">
+      <div>
+        <h3>Analysis availability</h3>
+        <p class="muted">
+          Forced Flow requires component-level instrumentation containing
+          visits per request and service time per visit.
+        </p>
+      </div>
+
+      <span
+        class="badge badge--neutral"
+        id="forcedFlowAvailabilityBadge">
+        Unavailable
+      </span>
+    </div>
+
+    <p id="forcedFlowReason" class="muted">
+      No Forced Flow instrumentation was supplied for this run.
+    </p>
+  </div>
+
+  <!-- Summary -->
+  <div class="panel">
+    <div class="panel__head panel__head--row">
+      <div>
+        <h3>Forced Flow summary</h3>
+        <p class="muted">
+          System-level throughput and the component with the highest
+          calculated service demand.
+        </p>
+      </div>
+
+      <span
+        class="badge badge--neutral"
+        id="forcedFlowDominantBadge">
+        —
+      </span>
+    </div>
+
+    <div class="metric-grid metric-grid--forced-flow">
+
+      <div class="metric-card">
+        <span class="metric-card__label">
+          System throughput (X)
+        </span>
+        <strong
+          id="forcedFlowSystemThroughput"
+          class="metric-card__value mono">
+          —
+        </strong>
+        <small>requests/sec</small>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-card__label">
+          Components analyzed
+        </span>
+        <strong
+          id="forcedFlowComponentCount"
+          class="metric-card__value mono">
+          —
+        </strong>
+        <small>instrumented components</small>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-card__label">
+          Dominant component
+        </span>
+        <strong
+          id="forcedFlowDominantComponent"
+          class="metric-card__value">
+          —
+        </strong>
+        <small>highest service demand</small>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Formula explanation -->
+  <div class="panel">
+    <div class="panel__head">
+      <div>
+        <h3>Model calculation</h3>
+        <p class="muted">
+          Forced Flow derives component demand from the measured system
+          throughput and the instrumented component behavior.
+        </p>
+      </div>
+    </div>
+
+    <div class="metric-grid metric-grid--forced-flow">
+
+      <div class="metric-card">
+        <span class="metric-card__label">
+          Component throughput
+        </span>
+        <strong class="metric-card__value mono">
+          X<sub>i</sub> = X × V<sub>i</sub>
+        </strong>
+        <small>component visits per second</small>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-card__label">
+          Service demand
+        </span>
+        <strong class="metric-card__value mono">
+          D<sub>i</sub> = V<sub>i</sub> × S<sub>i</sub>
+        </strong>
+        <small>seconds of component service per request</small>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Per component -->
+  <div class="panel">
+    <div class="panel__head">
+      <div>
+        <h3>Per-component demand</h3>
+        <p class="muted">
+          Components are ranked by calculated service demand.
+          Higher demand means the component consumes more service time
+          per system-level request.
+        </p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table" id="forcedFlowTable">
+
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Visits / request</th>
+            <th>Service time</th>
+            <th>Component throughput</th>
+            <th>Service demand</th>
+            <th>Measured throughput</th>
+            <th>Comparison</th>
+          </tr>
+        </thead>
+
+        <tbody id="forcedFlowTableBody">
+          <tr>
+            <td colspan="7" class="data-table__empty">
+              No components analyzed yet.
+            </td>
+          </tr>
+        </tbody>
+
+      </table>
+    </div>
+  </div>
+
+  <!-- Ranking -->
+  <div class="panel">
+    <div class="panel__head">
+      <div>
+        <h3>Demand ranking</h3>
+        <p class="muted">
+          Components ordered from highest to lowest service demand.
+        </p>
+      </div>
+    </div>
+
+    <div id="forcedFlowRanking" class="note-list">
+      <p class="empty-note">
+        No component ranking available yet.
+      </p>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="panel">
+    <div class="panel__head">
+      <h3>Analysis notes</h3>
+    </div>
+
+    <div id="forcedFlowNotes" class="note-list">
+      <p class="empty-note">
+        No Forced Flow analysis available yet.
+      </p>
+    </div>
+  </div>
+
+</section>
+
+
+      <!-- ========================================================== -->
+      <!-- AMDAHL'S LAW                                              -->
+      <!-- ========================================================== -->
+      <section id="amdahl" class="view" data-view="amdahl">
+
+        <div class="view__head">
+          <h2>Amdahl's Law — Optimization Ceiling</h2>
+          <p>
+            How much throughput speedup is achievable, at best, from fixing
+            the identified bottleneck resource alone — and what becomes the
+            new constraint once it's no longer the limit.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head panel__head--row">
+            <div>
+              <h3>Bottleneck resource</h3>
+              <p class="muted">
+                Same resource identified by the Bottleneck Analysis stage.
+              </p>
+            </div>
+            <span class="badge badge--accent" id="amdahlBottleneckBadge">—</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric-card">
+              <span class="metric-card__label">Current throughput</span>
+              <strong id="amdahlCurrentThroughput" class="metric-card__value mono">—</strong>
+              <small>requests/sec</small>
+            </div>
+            <div class="metric-card">
+              <span class="metric-card__label">Max theoretical speedup</span>
+              <strong id="amdahlMaxSpeedup" class="metric-card__value mono">—</strong>
+              <small>× current throughput</small>
+            </div>
+            <div class="metric-card">
+              <span class="metric-card__label">Implied max throughput</span>
+              <strong id="amdahlImpliedThroughput" class="metric-card__value mono">—</strong>
+              <small>requests/sec, bottleneck fully optimized</small>
+            </div>
+            <div class="metric-card">
+              <span class="metric-card__label">Next bottleneck after fix</span>
+              <strong id="amdahlNextBottleneck" class="metric-card__value mono">—</strong>
+              <small>resource / service demand</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">
+            <div>
+              <h3>Per-resource optimization ceiling</h3>
+              <p class="muted">
+                Fraction of total service demand and theoretical speedup
+                ceiling for every monitored resource, ranked by upside.
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="amdahlTable">
+              <thead>
+                <tr>
+                  <th>Resource</th>
+                  <th>Service demand</th>
+                  <th>Fraction of total demand</th>
+                  <th>Max speedup</th>
+                  <th>Implied max throughput</th>
+                </tr>
+              </thead>
+              <tbody id="amdahlTableBody">
+                <tr><td colspan="5" class="data-table__empty">No Amdahl analysis available yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>USL / Amdahl theoretical consistency</h3></div>
+          <p class="muted">
+            USL reduces exactly to Amdahl's Law when κ = 0 and f = σ — the
+            pipeline verifies this numerically rather than only asserting the
+            algebra, see <code>verify_usl_amdahl_equivalence()</code>.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>Notes</h3></div>
+          <div id="amdahlNotes" class="note-list">
+            <p class="empty-note">No Amdahl analysis available yet.</p>
+          </div>
+        </div>
+
       </section>
 
       <!-- ========================================================== -->
@@ -4093,6 +4984,100 @@
       </section>
 
       <!-- ========================================================== -->
+      <!-- SLO ANALYSIS                                              -->
+      <!-- ========================================================== -->
+      <section id="slo" class="view" data-view="slo">
+
+        <div class="view__head">
+          <h2>SLO Capacity</h2>
+          <p>
+            Reframes the same evidence as a single production-readiness
+            question: does the app stay within a response-time and error-rate
+            budget, and up to how many users does that hold — continuously,
+            not just at any one level that happens to pass.
+          </p>
+        </div>
+
+        <div class="stat-strip">
+          <div class="stat-card">
+            <span class="stat-card__label">SLO capacity (observed)</span>
+            <span class="stat-card__value" id="slo-capacity-observed">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">SLO capacity (incl. predicted)</span>
+            <span class="stat-card__value" id="slo-capacity-overall">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">First failure (observed)</span>
+            <span class="stat-card__value" id="slo-first-failure-observed">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">First failure (overall)</span>
+            <span class="stat-card__value" id="slo-first-failure-overall">—</span>
+            <span class="stat-card__unit">concurrent users</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head panel__head--row">
+            <div>
+              <h3>Budget</h3>
+              <p class="muted">Thresholds this run was evaluated against.</p>
+            </div>
+          </div>
+          <div class="kv-grid">
+            <div class="kv-grid__item">
+              <span>Max response time</span>
+              <strong id="slo-max-response-time" class="mono">—</strong>
+            </div>
+            <div class="kv-grid__item">
+              <span>Max error rate</span>
+              <strong id="slo-max-error-rate" class="mono">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">
+            <div>
+              <h3>Per-level evaluation</h3>
+              <p class="muted">
+                Response time and error rate against budget, at every observed
+                and USL-predicted load level.
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="sloTable">
+              <thead>
+                <tr>
+                  <th>Users</th>
+                  <th>Source</th>
+                  <th>Response time</th>
+                  <th>Error rate</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody id="sloTableBody">
+                <tr><td colspan="5" class="data-table__empty">No SLO analysis available yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>Notes</h3></div>
+          <div id="sloNotes" class="note-list">
+            <p class="empty-note">No SLO analysis available yet.</p>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ========================================================== -->
       <!-- RECOMMENDATIONS                                            -->
       <!-- ========================================================== -->
       <section id="recommendations" class="view" data-view="recommendations">
@@ -4522,6 +5507,9 @@
           <button class="playground-tab" data-model="littles-law" role="tab" aria-selected="false">Little's Law</button>
           <button class="playground-tab" data-model="queueing" role="tab" aria-selected="false">Queueing</button>
           <button class="playground-tab" data-model="bottleneck" role="tab" aria-selected="false">Bottleneck</button>
+          <button class="playground-tab" data-model="forced-flow" role="tab" aria-selected="false">Forced Flow</button>
+          <button class="playground-tab" data-model="amdahl" role="tab" aria-selected="false">Amdahl</button>
+          <button class="playground-tab" data-model="slo" role="tab" aria-selected="false">SLO</button>
         </div>
 
         <div class="panel playground-panel">
@@ -4560,6 +5548,42 @@
               <div class="field"><label class="field__label" for="pg-b-cpu">CPU usage %</label><input class="field__input field__input--mono" id="pg-b-cpu" placeholder="17.4"></div>
               <div class="field"><label class="field__label" for="pg-b-disk">Disk I/O MB/s</label><input class="field__input field__input--mono" id="pg-b-disk" placeholder="2.1"></div>
               <div class="field"><label class="field__label" for="pg-b-net">Network I/O MB/s</label><input class="field__input field__input--mono" id="pg-b-net" placeholder="4.6"></div>
+            </div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="forced-flow" hidden>
+            <p class="playground-form__hint">
+              System throughput plus one component's visits/request and
+              service time per visit. Comma-separated for multiple components
+              in the same order (name / visits / service time).
+            </p>
+            <div class="field"><label class="field__label" for="pg-ff-throughput">System throughput (req/s)</label><input class="field__input field__input--mono" id="pg-ff-throughput" placeholder="89.27"></div>
+            <div class="field"><label class="field__label" for="pg-ff-names">Component names</label><input class="field__input field__input--mono" id="pg-ff-names" placeholder="database, cache"></div>
+            <div class="field"><label class="field__label" for="pg-ff-visits">Visits/request</label><input class="field__input field__input--mono" id="pg-ff-visits" placeholder="3.0, 1.2"></div>
+            <div class="field"><label class="field__label" for="pg-ff-service">Service time (seconds/visit)</label><input class="field__input field__input--mono" id="pg-ff-service" placeholder="0.015, 0.002"></div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="amdahl" hidden>
+            <p class="playground-form__hint">
+              Paste the direct output of the Bottleneck Analysis endpoint
+              (or a prior pipeline run's <code>bottleneck</code> result).
+            </p>
+            <div class="field"><label class="field__label" for="pg-amdahl-bottleneck">bottleneck_results (JSON)</label><textarea class="field__input field__input--mono" id="pg-amdahl-bottleneck" rows="6" placeholder='{"available": true, "bottleneck": {...}, "resources": {...}}'></textarea></div>
+            <button type="submit" class="btn btn--secondary">Run model</button>
+          </form>
+
+          <form class="playground-form" data-model-form="slo" hidden>
+            <p class="playground-form__hint">
+              Comma-separated load levels: users, response time (seconds), error rate (%).
+            </p>
+            <div class="field"><label class="field__label" for="pg-slo-users">Users</label><input class="field__input field__input--mono" id="pg-slo-users" placeholder="100, 200, 300, 400, 500"></div>
+            <div class="field"><label class="field__label" for="pg-slo-rt">Response time (s)</label><input class="field__input field__input--mono" id="pg-slo-rt" placeholder="0.18, 0.22, 0.31, 0.44, 0.61"></div>
+            <div class="field"><label class="field__label" for="pg-slo-err">Error rate (%)</label><input class="field__input field__input--mono" id="pg-slo-err" placeholder="0, 0, 0.1, 0.2, 1.4"></div>
+            <div class="field-row">
+              <div class="field"><label class="field__label" for="pg-slo-max-rt">Max response time (s)</label><input class="field__input field__input--mono" id="pg-slo-max-rt" placeholder="0.5"></div>
+              <div class="field"><label class="field__label" for="pg-slo-max-err">Max error rate (%)</label><input class="field__input field__input--mono" id="pg-slo-max-err" placeholder="1.0"></div>
             </div>
             <button type="submit" class="btn btn--secondary">Run model</button>
           </form>

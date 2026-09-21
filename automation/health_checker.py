@@ -30,6 +30,14 @@ class HealthCheckError(ValueError):
 # a second, redundant port-guessing mechanism here would just be a second
 # place for that logic to drift out of sync - so it doesn't.
 #
+# One naming collision worth calling out explicitly: docker_manager's
+# run_container() result has a "host" key, but that value is already a
+# full base URL ("http://localhost:32768"), not a bare hostname
+# ("localhost") - it bakes in the resolved host port. wait_until_ready()
+# accepts either shape (detecting "://") specifically so passing that
+# field straight through doesn't silently build a broken double-scheme,
+# double-port URL.
+#
 # "Ready" means the HTTP server is accepting connections and speaking
 # HTTP at all - ANY status code counts (200, 404, 500 all prove the
 # server process is up and listening), since this pipeline has no way of
@@ -80,16 +88,26 @@ class HealthChecker:
     def wait_until_ready(
         self,
         host: str,
-        port: int,
+        port: Optional[int] = None,
         path: str = "/",
         container_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Args:
-            host: hostname to poll, e.g. "localhost".
-            port: port to poll - use the "port" value from
-                docker_manager.run_container()'s result, not a hardcoded
-                framework default (see module docstring).
+            host: either a bare hostname ("localhost") - in which case
+                `port` is required - or a full base URL
+                ("http://localhost:32768") - in which case `port` is
+                ignored for URL construction. Accepting both matters in
+                practice: docker_manager.run_container()'s result has a
+                "host" key that is ALREADY a full base URL (it bakes in
+                the resolved host port), not a bare hostname, despite the
+                name - passing that value straight through used to
+                silently build a broken double-scheme URL like
+                "http://http://localhost:32768:32768/". Detecting "://"
+                here means callers don't have to remember that gotcha.
+            port: port to poll - required only when `host` is a bare
+                hostname. Use the "port" value from
+                docker_manager.run_container()'s result in that case.
             path: URL path to request. Defaults to "/" - any HTTP
                 response (including 404/500) counts as ready, so this
                 rarely needs to be anything else.
@@ -105,11 +123,16 @@ class HealthChecker:
         """
         if not host:
             raise HealthCheckError("host is required.")
-        if not isinstance(port, int) or isinstance(port, bool) or not (0 < port <= 65535):
-            raise HealthCheckError(f"port must be a valid port number, got {port!r}.")
+
+        if "://" in host:
+            base_url = host.rstrip("/")
+        else:
+            if not isinstance(port, int) or isinstance(port, bool) or not (0 < port <= 65535):
+                raise HealthCheckError(f"port must be a valid port number, got {port!r}.")
+            base_url = f"http://{host}:{port}"
 
         normalized_path = path if path.startswith("/") else f"/{path}"
-        url = f"http://{host}:{port}{normalized_path}"
+        url = f"{base_url}{normalized_path}"
 
         start = time.monotonic()
         interval = self.initial_interval_seconds
@@ -214,7 +237,7 @@ class HealthChecker:
 
 def check_health(
     host: str,
-    port: int,
+    port: Optional[int] = None,
     path: str = "/",
     container_id: Optional[str] = None,
     docker_manager: Optional[DockerManager] = None,

@@ -20,9 +20,13 @@ Design rules (see project spec):
     * Never claim a specific root cause (e.g. "the database is the
       bottleneck") unless the available evidence actually supports it —
       use "investigate" / "may indicate" / "consider" language instead.
-    * Never treat `capacity.results.safe_users == 0` as a literal
-      zero-user capacity. It means "no safe extrapolation capacity"
-      because the queueing model is unstable.
+    * Treat an unstable queue (queue_stability == "unstable") as always
+      worth a CRITICAL warning that any calculated safe-capacity number
+      isn't reliable for planning yet - regardless of the exact
+      safe_users value, since capacity.py derives safe_users from
+      breaking_point (which only caps growth at current_users when
+      unstable, it doesn't zero out) rather than the fragile literal
+      safe_users == 0 check this used to rely on.
     * Avoid duplicate/near-duplicate recommendations — when several
       models flag the same underlying risk, merge them into one
       stronger recommendation with combined evidence.
@@ -64,9 +68,7 @@ except ImportError:  # pragma: no cover - defensive fallback only
     QUEUE_LENGTH_CRITICAL_THRESHOLD = 10.0
 
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
+# --- Exceptions ---
 
 class RecommendationEngineError(Exception):
     """Base exception for the recommendation engine."""
@@ -76,9 +78,7 @@ class RecommendationValidationError(RecommendationEngineError):
     """Raised when a required upstream module output is missing/malformed."""
 
 
-# ---------------------------------------------------------------------------
-# Priority / category ordering
-# ---------------------------------------------------------------------------
+# --- Priority / category ordering ---
 
 class Priority:
     CRITICAL = "CRITICAL"
@@ -96,24 +96,23 @@ _CATEGORY_RANK = {
     "Queueing": 0,
     "Error Rate": 1,
     "Bottleneck Analysis": 2,
-    "Capacity": 3,
-    "Response Time": 4,
-    "CPU": 5,
-    "Memory": 6,
-    "Disk I/O": 7,
-    "Network I/O": 8,
-    "USL Scalability": 9,
-    "Little's Law": 10,
-    "Scalability Prediction": 11,
-    "Scaling Strategy": 12,
-    "Database": 13,
+    "Optimization Ceiling": 3,
+    "Capacity": 4,
+    "Response Time": 5,
+    "CPU": 6,
+    "Memory": 7,
+    "Disk I/O": 8,
+    "Network I/O": 9,
+    "USL Scalability": 10,
+    "Little's Law": 11,
+    "Scalability Prediction": 12,
+    "Scaling Strategy": 13,
+    "Database": 14,
 }
 _DEFAULT_CATEGORY_RANK = 99
 
 
-# ---------------------------------------------------------------------------
-# Small helpers
-# ---------------------------------------------------------------------------
+# --- Small helpers ---
 
 class _IdGenerator:
     """Sequential, per-prefix recommendation IDs, e.g. QUEUE-001, CPU-002."""
@@ -173,9 +172,7 @@ def _get(d: Optional[Dict[str, Any]], *path: str, default: Any = None) -> Any:
     return cur
 
 
-# ---------------------------------------------------------------------------
-# A. Capacity recommendations
-# ---------------------------------------------------------------------------
+# --- A. Capacity recommendations ---
 
 _CAPACITY_CLASSIFICATION_PRIORITY = {
     "Healthy": Priority.INFO,
@@ -261,17 +258,28 @@ def _capacity_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> 
 
 def _zero_capacity_special_case(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Spec section 16 / 'safe_users == 0' special case: calculate_safe_capacity()
-    in capacity.py returns 0.0 specifically when the queueing model is
-    unstable. This must NEVER be interpreted as "the application supports
-    zero users" - it means no safe extrapolation capacity is available
-    until queue instability is resolved.
-    """
-    safe_users = results.get("safe_users")
-    stability = str(results.get("queue_stability", "")).lower()
+    Spec section 16 / queue-instability special case.
 
-    if safe_users is None or safe_users != 0 or stability != "unstable":
+    Originally keyed off safe_users being exactly 0.0, back when
+    calculate_safe_capacity() in capacity.py zeroed out safe_users
+    directly whenever the queue was unstable. capacity.py now derives
+    safe_users from breaking_point instead (see capacity.py's
+    calculate_safe_capacity docstring for why - it closes a safe_users-
+    vs-breaking_point contradiction the old design allowed), and
+    breaking_point only CAPS growth at current_users when the queue is
+    unstable rather than zeroing out - so safe_users is no longer
+    reliably exactly 0.0 in this situation; it depends on whatever the
+    binding constraint (queue/CPU/memory/capacity_reference) happens to
+    be. The unstable queue itself is always the real thing worth
+    flagging as CRITICAL here, independent of what specific number
+    safe_users lands on - so that's checked directly now instead of an
+    indirect, coincidental numeric equality.
+    """
+    stability = str(results.get("queue_stability", "")).lower()
+    if stability != "unstable":
         return []
+
+    safe_users = results.get("safe_users")
 
     return [
         _rec(
@@ -279,42 +287,40 @@ def _zero_capacity_special_case(id_gen: _IdGenerator, results: Dict[str, Any]) -
             "CAP-ZERO",
             Priority.CRITICAL,
             "Capacity",
-            title="No safe extrapolation capacity available",
+            title="Queue is unstable - safe capacity can't be trusted for planning",
             problem=(
-                "Safe capacity was calculated as 0 because the queueing model indicates an "
-                "unstable system (arrival rate meets or exceeds service rate). This is NOT a "
-                "claim that the application literally supports zero users — it means no safe "
-                "extrapolation capacity can currently be determined."
+                "The queueing model shows requests arriving faster than the system can process "
+                "them (utilization at or above 100%), so the queue keeps growing without bound "
+                "instead of settling into a steady state. Any 'safe capacity' figure calculated "
+                "from this data is not a reliable planning number until this is resolved."
             ),
             evidence={
-                "safe_users": 0,
+                "safe_users": _round(safe_users),
                 "queue_stability": results.get("queue_stability"),
                 "queue_utilization": results.get("queue_utilization"),
                 "current_users": _round(results.get("current_users")),
             },
             recommendation=(
-                "CRITICAL: No safe extrapolation capacity is available because the queueing "
-                "model indicates an unstable system. Resolve service-capacity instability "
-                "before making future-load predictions operationally actionable."
+                "Treat any capacity number from this run as unreliable until queue stability is "
+                "restored. Resolve the underlying overload before using predictions to plan for "
+                "higher user loads."
             ),
             actions=[
                 "Increase service/processing capacity (more workers, more instances)",
                 "Reduce incoming request rate until the queue returns to a stable state",
-                "Re-run capacity and scalability analysis once utilization is below 1.0",
+                "Re-run capacity and scalability analysis once utilization is below 100%",
                 "Do not use current predictions to plan for higher user loads until resolved",
             ],
             expected_impact=(
-                "Once queue stability is restored, a meaningful safe-capacity figure can be "
-                "calculated and used for future-load planning."
+                "Once queue stability is restored, the calculated safe-capacity figure becomes "
+                "a trustworthy number for future-load planning."
             ),
             confidence="High",
         )
     ]
 
 
-# ---------------------------------------------------------------------------
-# B. CPU recommendations
-# ---------------------------------------------------------------------------
+# --- B. CPU recommendations ---
 
 def _cpu_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     pressure = _get(results, "resource_pressure", "cpu")
@@ -369,9 +375,7 @@ def _cpu_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[
     ]
 
 
-# ---------------------------------------------------------------------------
-# C. Memory recommendations
-# ---------------------------------------------------------------------------
+# --- C. Memory recommendations ---
 
 def _memory_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     pressure = _get(results, "resource_pressure", "memory")
@@ -426,9 +430,7 @@ def _memory_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> Li
     ]
 
 
-# ---------------------------------------------------------------------------
-# D. Queue recommendations
-# ---------------------------------------------------------------------------
+# --- D. Queue recommendations ---
 
 def _queue_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     stability = str(results.get("queue_stability", "")).lower()
@@ -541,9 +543,7 @@ def _queue_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> Lis
     ]
 
 
-# ---------------------------------------------------------------------------
-# E. USL recommendations (contention / coherency / efficiency / saturation)
-# ---------------------------------------------------------------------------
+# --- E. USL recommendations (contention / coherency / efficiency / saturation) ---
 
 _USL_SIGMA_HIGH_THRESHOLD = 0.05
 _USL_KAPPA_HIGH_THRESHOLD = 0.001
@@ -572,16 +572,18 @@ def _usl_recommendations(
                 "USL-SIGMA",
                 Priority.HIGH if sigma >= _USL_SIGMA_HIGH_THRESHOLD * 2 else Priority.MEDIUM,
                 "USL Scalability",
-                title="USL indicates significant contention",
+                title="Shared resources are limiting how well the app scales",
                 problem=(
-                    f"The fitted USL contention parameter (sigma) is {_round(sigma, 4)}, "
-                    f"indicating throughput growth is being slowed by contention as concurrency increases."
+                    "As more users are added, throughput isn't growing as fast as it should. "
+                    "This pattern usually means something shared - a database connection pool, "
+                    "a lock, or a single-threaded step - is creating a bottleneck that gets "
+                    "worse the more traffic comes in."
                 ),
                 evidence={"sigma": _round(sigma, 4), "threshold_used": _USL_SIGMA_HIGH_THRESHOLD},
                 recommendation=(
-                    "USL indicates contention is limiting scalability. Investigate shared "
-                    "resources such as locks, database connections, CPU contention, "
-                    "synchronization, or other serialized sections."
+                    "Look for a shared resource that many requests compete for at the same time "
+                    "- a database connection pool, a lock, or a step that can only run one at a "
+                    "time - and see if it can be widened, cached, or removed."
                 ),
                 actions=[
                     "Investigate shared-resource contention (locks, connection pools, semaphores)",
@@ -589,7 +591,7 @@ def _usl_recommendations(
                     "Consider increasing connection pool sizes or reducing lock scope",
                     "Investigate database connection contention and slow queries",
                 ],
-                expected_impact="Reducing contention improves throughput growth as concurrency increases.",
+                expected_impact="Fixing this lets throughput keep growing as more users are added, instead of leveling off early.",
                 confidence="High" if usable_for_extrapolation else "Medium",
             )
         )
@@ -601,17 +603,20 @@ def _usl_recommendations(
                 "USL-KAPPA",
                 Priority.HIGH if kappa >= _USL_KAPPA_HIGH_THRESHOLD * 2 else Priority.MEDIUM,
                 "USL Scalability",
-                title="USL indicates coherency/coordination overhead",
+                title="Performance may get worse, not just slower, at very high load",
                 problem=(
-                    f"The fitted USL coherency parameter (kappa) is {_round(kappa, 6)}, indicating "
-                    f"increasing coordination overhead as concurrency grows — this is what causes "
-                    f"throughput to eventually decline at high concurrency in the USL model."
+                    "Our model predicts that beyond a certain number of users, adding more "
+                    "traffic will actually make the app slower overall - not just stop it from "
+                    "getting faster. This usually happens when different parts of the system "
+                    "have to coordinate or stay in sync with each other, and that coordination "
+                    "cost grows faster than the extra traffic being handled."
                 ),
                 evidence={"kappa": _round(kappa, 6), "threshold_used": _USL_KAPPA_HIGH_THRESHOLD},
                 recommendation=(
-                    "USL indicates increasing coordination/coherency overhead. Investigate "
-                    "shared-state synchronization, database contention, inter-service "
-                    "communication, locking, and coordination mechanisms."
+                    "Look for places where different parts of the app have to coordinate or "
+                    "stay in sync when many requests happen at once - shared caches, database "
+                    "locks, or communication between services - since these often cause "
+                    "performance to fall off a cliff instead of leveling off gracefully."
                 ),
                 actions=[
                     "Investigate shared-state synchronization and coordination points",
@@ -619,7 +624,7 @@ def _usl_recommendations(
                     "Investigate database locking and contention under concurrent load",
                     "Consider reducing coordination requirements (e.g. sharding, partitioning)",
                 ],
-                expected_impact="Reducing coherency overhead delays or removes the point at which throughput declines under load.",
+                expected_impact="Delays or removes the point at which the app starts getting slower as load grows, instead of just leveling off.",
                 confidence="High" if usable_for_extrapolation else "Medium",
             )
         )
@@ -634,24 +639,24 @@ def _usl_recommendations(
                 "USL-EFF",
                 priority,
                 "USL Scalability",
-                title="Scalability efficiency is low",
+                title="Adding more users isn't paying off the way it should",
                 problem=(
                     f"Scalability efficiency is {_round(scalability_efficiency * 100, 1)}%, meaning "
-                    f"increasing users is producing substantially less throughput growth than ideal "
-                    f"linear scaling."
+                    f"each additional user is producing noticeably less extra throughput than "
+                    f"a well-scaling system should deliver."
                 ),
                 evidence={"scalability_efficiency": _round(scalability_efficiency)},
                 recommendation=(
-                    "Scalability efficiency is low. Increasing users is producing substantially "
-                    "less throughput growth than ideal linear scaling."
+                    "Efficiency is low - increasing the number of users is producing "
+                    "substantially less throughput growth than expected."
                 ),
                 actions=[
-                    "Investigate contention and coordination overhead (see USL sigma/kappa findings)",
+                    "Investigate contention and coordination overhead (see the scalability findings above)",
                     "Inspect database query patterns and connection-pool sizing under load",
                     "Optimize shared resources and reduce synchronization overhead",
                     "Consider horizontal scaling to distribute load across more instances",
                 ],
-                expected_impact="Improves throughput gained per additional concurrent user.",
+                expected_impact="Improves how much throughput is gained from each additional concurrent user.",
                 confidence="Medium",
             )
         )
@@ -690,9 +695,7 @@ def _usl_recommendations(
     return recs
 
 
-# ---------------------------------------------------------------------------
-# F. Little's Law recommendations
-# ---------------------------------------------------------------------------
+# --- F. Little's Law recommendations ---
 
 def _little_law_recommendations(
     id_gen: _IdGenerator,
@@ -747,8 +750,9 @@ def _little_law_recommendations(
                 "Little's Law",
                 title="Response time is a major contributor to concurrency",
                 problem=(
-                    f"Average time in system is {_round(response_time, 3)}s, which by Little's Law "
-                    f"(L = λW) directly inflates the number of concurrently in-flight requests."
+                    f"Average time in system is {_round(response_time, 3)}s. The longer each "
+                    f"request takes, the more requests end up stacked up in the system at the "
+                    f"same time, even without any change in how many arrive per second."
                 ),
                 evidence={"response_time_seconds": _round(response_time, 3)},
                 recommendation=(
@@ -799,9 +803,7 @@ def _little_law_recommendations(
     return recs
 
 
-# ---------------------------------------------------------------------------
-# G. Response-time recommendations
-# ---------------------------------------------------------------------------
+# --- G. Response-time recommendations ---
 
 def _response_time_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     recs: List[Dict[str, Any]] = []
@@ -842,9 +844,7 @@ def _response_time_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]
     return recs
 
 
-# ---------------------------------------------------------------------------
-# H. Error-rate recommendations
-# ---------------------------------------------------------------------------
+# --- H. Error-rate recommendations ---
 
 def _error_rate_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     error_rate = results.get("current_error_rate")
@@ -892,9 +892,7 @@ def _error_rate_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -
     ]
 
 
-# ---------------------------------------------------------------------------
-# I. Disk I/O and Network I/O recommendations
-# ---------------------------------------------------------------------------
+# --- I. Disk I/O and Network I/O recommendations ---
 
 def _disk_io_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -> List[Dict[str, Any]]:
     pressure = _get(results, "resource_pressure", "disk")
@@ -1016,21 +1014,22 @@ def _bottleneck_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -
                 "BOTTLENECK",
                 Priority.CRITICAL,
                 "Bottleneck Analysis",
-                title="Measured throughput exceeds the derived theoretical ceiling",
+                title="Measured performance doesn't match what the numbers say should be possible",
                 problem=(
-                    f"Current throughput ({_round(current_throughput)} req/s) exceeds the "
-                    f"asymptotic throughput bound derived from {resource_label}'s service demand "
-                    f"({_round(asymptotic_bound)} req/s). Since this bound is a hard physical "
-                    f"constraint given the monitored resource data, this indicates either a "
-                    f"measurement inconsistency or that the configured maximum-capacity "
-                    f"assumption used for {resource_label} is set too low."
+                    f"The app is currently handling {_round(current_throughput)} requests/sec, "
+                    f"but based on how much work {resource_label} does per request "
+                    f"({_round(service_demand * 1000, 2)}ms), it shouldn't be able to sustain more "
+                    f"than about {_round(asymptotic_bound)} requests/sec. Since that number is "
+                    f"meant to be a hard ceiling given the current measurements, either something "
+                    f"was measured incorrectly, or the configured maximum capacity for "
+                    f"{resource_label} is set lower than what the deployment can actually handle."
                 ),
                 evidence=evidence,
                 recommendation=(
-                    "Review the configured maximum-capacity assumption used for this resource "
-                    "(e.g. disk/network throughput limits) and verify runtime metrics are being "
-                    "captured correctly - a measured value should not be able to exceed a "
-                    "correctly-configured physical ceiling."
+                    "Double-check the configured maximum-capacity assumption used for this "
+                    "resource (e.g. disk/network throughput limits) and confirm runtime metrics "
+                    "are being captured correctly - a measured value shouldn't be able to exceed "
+                    "a correctly-configured ceiling."
                 ),
                 actions=[
                     f"Verify the configured maximum capacity used for {resource_label} reflects the real deployment",
@@ -1052,30 +1051,29 @@ def _bottleneck_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -
             "BOTTLENECK",
             priority,
             "Bottleneck Analysis",
-            title=f"{resource_label} is the primary bottleneck ({severity})",
+            title=f"{resource_label} is the main thing limiting speed right now",
             problem=(
-                f"Among monitored resources (cpu/disk/network), {resource_label} has the highest "
-                f"service demand ({_round(service_demand, 6)}s/request), making it the resource "
-                f"most likely to limit throughput first. The derived throughput ceiling from this "
-                f"demand is {_round(asymptotic_bound)} req/s, and current throughput "
-                f"({_round(current_throughput)} req/s) is classified as '{severity}' relative to "
-                f"that ceiling."
+                f"Among the resources being monitored (CPU, disk, network), {resource_label} does "
+                f"the most work per request ({_round(service_demand * 1000, 2)}ms), which makes it "
+                f"the first one likely to run out of headroom as traffic grows. Based on that, the "
+                f"app shouldn't be able to sustain much more than {_round(asymptotic_bound)} "
+                f"requests/sec - current throughput ({_round(current_throughput)} req/s) is "
+                f"classified as '{severity}' relative to that limit."
             ),
             evidence=evidence,
             recommendation=(
-                f"{resource_label} is the primary resource constraint among monitored resources. "
-                f"Prioritize {resource_label} optimization or capacity increases over other "
-                f"resources - improving a non-bottleneck resource is unlikely to raise the "
-                f"throughput ceiling while {resource_label} remains the limiting factor."
+                f"{resource_label} is the main constraint right now. Prioritize {resource_label} "
+                f"optimization or capacity increases over other resources - improving something "
+                f"else won't raise the ceiling while {resource_label} remains the limiting factor."
             ),
             actions=[
                 f"Prioritize {resource_label} capacity increases or optimization over other resources",
                 f"Re-run bottleneck analysis after addressing {resource_label} to confirm the bottleneck has shifted",
-                "This reflects the bottleneck among monitored resources only - an unmonitored resource (e.g. a database) could also be a limiting factor",
+                "Keep in mind this only covers monitored resources - an unmonitored one (e.g. a database) could also be a limiting factor",
             ],
             expected_impact=(
-                f"Addressing the {resource_label} bottleneck directly raises the theoretical "
-                f"throughput ceiling, unlike addressing non-bottleneck resources."
+                f"Addressing the {resource_label} bottleneck directly raises how much traffic the "
+                f"app can handle, unlike improving a resource that isn't the constraint."
             ),
             confidence="High",
         )
@@ -1083,8 +1081,122 @@ def _bottleneck_recommendations(id_gen: _IdGenerator, results: Dict[str, Any]) -
 
 
 # ---------------------------------------------------------------------------
-# J. Database recommendations (evidence-gated, never asserted as fact)
+# J2b. Optimization Ceiling recommendations (Amdahl's Law / amdahl.py)
+#
+# Bottleneck Analysis above answers "which resource limits throughput
+# first". This answers the natural follow-up question it doesn't:
+# "how much would actually fixing it help, and is that worth the
+# effort?" A resource can be the clear bottleneck and still offer a
+# disappointing ceiling if it's not a large share of total demand - this
+# is what catches that before engineering time is spent on it.
 # ---------------------------------------------------------------------------
+
+def _amdahl_recommendations(
+    id_gen: _IdGenerator,
+    amdahl_results: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not isinstance(amdahl_results, dict) or not amdahl_results.get("available"):
+        return []  # amdahl.py data wasn't supplied, or bottleneck data underlying it wasn't usable
+
+    bottleneck_analysis = amdahl_results.get("bottleneck_analysis")
+    if not isinstance(bottleneck_analysis, dict):
+        return []
+
+    resource = bottleneck_analysis.get("resource")
+    if not resource:
+        return []
+
+    resource_label = "CPU" if resource == "cpu" else str(resource).capitalize()
+    fraction = bottleneck_analysis.get("fraction_of_total_demand")
+    max_speedup = bottleneck_analysis.get("max_theoretical_speedup")
+    unbounded = bool(bottleneck_analysis.get("max_theoretical_speedup_unbounded"))
+    illustrative = bottleneck_analysis.get("illustrative_speedups") or {}
+    implied_max_throughput = bottleneck_analysis.get("implied_max_throughput")
+    next_bottleneck = bottleneck_analysis.get("next_bottleneck_after_optimization")
+    current_throughput = amdahl_results.get("current_throughput")
+
+    evidence = {
+        "resource": resource,
+        "fraction_of_total_demand": fraction,
+        "max_theoretical_speedup": max_speedup,
+        "illustrative_speedups": illustrative,
+        "implied_max_throughput": implied_max_throughput,
+        "current_throughput": current_throughput,
+        "next_bottleneck_after_optimization": next_bottleneck,
+    }
+
+    if unbounded:
+        priority = Priority.INFO
+        ceiling_phrase = "no meaningful ceiling could be computed (only one resource is currently monitored)"
+    elif isinstance(max_speedup, (int, float)) and max_speedup < 1.3:
+        priority = Priority.LOW
+        ceiling_phrase = f"a maximum theoretical speedup of only {max_speedup:.2f}x"
+    else:
+        priority = Priority.MEDIUM
+        ceiling_phrase = (
+            f"a maximum theoretical speedup of {max_speedup:.2f}x" if isinstance(max_speedup, (int, float))
+            else "an unbounded ceiling"
+        )
+
+    problem = (
+        f"{resource_label} accounts for {fraction * 100:.1f}% of total measured service demand "
+        f"among monitored resources. Even optimizing it to be infinitely fast caps overall "
+        f"throughput improvement at {ceiling_phrase}"
+    )
+    if isinstance(implied_max_throughput, (int, float)) and isinstance(current_throughput, (int, float)):
+        problem += f" (from {current_throughput:.1f} req/s up to at most {implied_max_throughput:.1f} req/s)."
+    else:
+        problem += "."
+    if next_bottleneck:
+        problem += (
+            f" Beyond that point, {next_bottleneck.get('resource')} would become the new limiting "
+            f"factor (doing {next_bottleneck.get('service_demand') * 1000:.2f}ms of work per request)."
+        )
+
+    recommendation_text = f"Before investing significant engineering effort into optimizing {resource_label}, weigh it against this ceiling"
+    recommendation_text += f" of {max_speedup:.2f}x. " if isinstance(max_speedup, (int, float)) else ". "
+    if next_bottleneck:
+        recommendation_text += (
+            f"Since {next_bottleneck.get('resource')} would become the next constraint, a durable "
+            f"improvement likely needs both resources addressed, not just {resource_label} alone."
+        )
+    else:
+        recommendation_text += (
+            f"Among monitored resources, optimizing {resource_label} is the highest-leverage single change available."
+        )
+
+    actions = [
+        f"Weigh the engineering cost of optimizing {resource_label} against its throughput ceiling before committing effort",
+    ]
+    if next_bottleneck:
+        actions.append(
+            f"Plan for {next_bottleneck.get('resource')} improvements alongside {resource_label}, "
+            f"since it becomes the next constraint once {resource_label} is addressed"
+        )
+    actions.append("Re-run bottleneck and Amdahl analysis after any optimization to confirm the ceiling moved as expected")
+
+    return [
+        _rec(
+            id_gen,
+            "AMDAHL",
+            priority,
+            "Optimization Ceiling",
+            title=f"Optimization ceiling for {resource_label}: {ceiling_phrase}",
+            problem=problem,
+            evidence=evidence,
+            recommendation=recommendation_text,
+            actions=actions,
+            expected_impact=(
+                f"Sets a realistic upper bound on throughput improvement from optimizing "
+                f"{resource_label} alone, so effort can be weighed against the likely payoff "
+                f"before it's spent."
+            ),
+            confidence="Medium",
+        )
+    ]
+
+
+# --- J. Database recommendations (evidence-gated, never asserted as fact) ---
 
 def _database_recommendations(
     id_gen: _IdGenerator,
@@ -1101,7 +1213,7 @@ def _database_recommendations(
 
     reasons = []
     if high_contention:
-        reasons.append("USL contention (sigma) is elevated")
+        reasons.append("throughput is being limited by a shared resource under concurrent load")
     if high_response_time:
         reasons.append("average response time exceeds the configured threshold")
     if queue_pressure:
@@ -1141,9 +1253,7 @@ def _database_recommendations(
     ]
 
 
-# ---------------------------------------------------------------------------
-# K. Scalability prediction recommendations
-# ---------------------------------------------------------------------------
+# --- K. Scalability prediction recommendations ---
 
 def _scalability_prediction_recommendations(
     id_gen: _IdGenerator,
@@ -1312,21 +1422,21 @@ def _asymptotic_bound_recommendations(
             "SCALE-BOUND",
             Priority.CRITICAL,
             "Scalability Prediction",
-            title="USL predictions exceed the physical throughput ceiling",
+            title="Our growth model predicts more traffic than the system can physically handle",
             problem=(
-                f"Beginning at approximately {_round(first_bound_exceeded)} concurrent users, the "
-                f"USL-fitted throughput curve predicts a value higher than the independently-"
-                f"derived asymptotic throughput ceiling from bottleneck.py's resource-demand "
-                f"analysis. This is not just a modelled 'collapse' - it means the curve fit itself "
-                f"is no longer physically achievable beyond this point, regardless of the fitted "
-                f"curve's shape."
+                f"Starting around {_round(first_bound_exceeded)} concurrent users, our growth "
+                f"prediction calls for more throughput than the app's own resource usage says is "
+                f"actually possible. Two independent calculations disagreeing like this is a "
+                f"stronger warning sign than a simple slowdown - it means the growth prediction "
+                f"itself can no longer be trusted at and beyond this point, regardless of what "
+                f"shape the prediction curve follows."
             ),
             evidence=evidence,
             recommendation=(
-                "Treat the raw USL-fitted throughput prediction as unreliable at and beyond this "
-                "user level. Use the bounded/capped throughput value reported alongside each "
-                "prediction instead, since it reflects the physical ceiling rather than the "
-                "unconstrained curve fit."
+                "Don't rely on the raw growth prediction at or beyond this point. Use the "
+                "capped/bounded number reported alongside each prediction instead - it reflects "
+                "what's actually achievable given current resource usage, not just where the "
+                "growth curve extrapolates to."
             ),
             actions=[
                 "Prioritize resolving the identified bottleneck resource before planning for load beyond this level",
@@ -1339,9 +1449,66 @@ def _asymptotic_bound_recommendations(
     ]
 
 
-# ---------------------------------------------------------------------------
-# L. Scaling-strategy recommendation (vertical vs. horizontal)
-# ---------------------------------------------------------------------------
+def _amdahl_ceiling_scalability_recommendations(
+    id_gen: _IdGenerator,
+    scalability_results: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    A stronger sibling of SCALE-BOUND above: that one flags predictions
+    exceeding the CURRENT asymptotic bound (impossible today, but
+    possibly fixable). This flags predictions exceeding the OPTIMIZED-
+    bottleneck ceiling (amdahl.py's implied_max_throughput) - meaning
+    even fixing the current bottleneck entirely wouldn't be enough to
+    reach that load level, so planning needs to look beyond a single
+    resource fix.
+    """
+    summary = _get(scalability_results, "summary") or {}
+    first_point = summary.get("first_amdahl_ceiling_exceeded_point")
+    if first_point is None:
+        return []
+
+    predictions = _get(scalability_results, "predictions") or []
+    matching = next((p for p in predictions if p.get("users") == first_point), None)
+
+    evidence = {"first_amdahl_ceiling_exceeded_point_users": _round(first_point)}
+    if matching:
+        evidence.update({
+            "predicted_throughput": matching.get("predicted_throughput"),
+            "amdahl_max_throughput_ceiling": matching.get("amdahl_max_throughput_ceiling"),
+        })
+
+    return [
+        _rec(
+            id_gen,
+            "SCALE-AMDAHL",
+            Priority.CRITICAL,
+            "Scalability Prediction",
+            title="Reaching this load needs more than fixing one resource",
+            problem=(
+                f"Starting around {_round(first_point)} concurrent users, the predicted traffic is "
+                f"more than the app could handle even if the current bottleneck resource were "
+                f"completely eliminated. Fixing just that one resource - whatever it is - won't be "
+                f"enough to get there; something else would take over as the limiting factor first."
+            ),
+            evidence=evidence,
+            recommendation=(
+                "A single-resource optimization will not be sufficient to reach this load level. "
+                "Plan capacity or optimization work across multiple resources - see the "
+                "Optimization Ceiling recommendation's next-bottleneck evidence for what else "
+                "would need improvement - before targeting this user level."
+            ),
+            actions=[
+                "Review the Optimization Ceiling recommendation to identify what resource becomes the constraint after the current bottleneck is fixed",
+                "Consider horizontal scaling in addition to per-resource optimization",
+                "Re-validate with real load tests as traffic approaches this level",
+            ],
+            expected_impact="Prevents planning for load levels that a single-resource optimization cannot realistically reach.",
+            confidence="Medium",
+        )
+    ]
+
+
+# --- L. Scaling-strategy recommendation (vertical vs. horizontal) ---
 
 def _scaling_strategy_recommendation(
     id_gen: _IdGenerator,
@@ -1499,9 +1666,7 @@ def _merged_high_load_risk(
     )
 
 
-# ---------------------------------------------------------------------------
-# Ranking, summary, executive narrative
-# ---------------------------------------------------------------------------
+# --- Ranking, summary, executive narrative ---
 
 def _rank_recommendations(recs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(
@@ -1594,9 +1759,7 @@ def _build_executive_summary(
     return " ".join(sentences)
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
+# --- Public entry point ---
 
 def generate_recommendations(
     capacity_results: Dict[str, Any],
@@ -1604,6 +1767,7 @@ def generate_recommendations(
     usl_results: Optional[Dict[str, Any]] = None,
     little_law_results: Optional[Dict[str, Any]] = None,
     queueing_results: Optional[Dict[str, Any]] = None,
+    amdahl_results: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generate the final, structured set of recommendations.
@@ -1618,7 +1782,11 @@ def generate_recommendations(
         scalability_results: full output of scalability.predict_scalability().
             Optional — if omitted, scalability-prediction recommendations are skipped.
             If scalability.py was given bottleneck_results, its summary carries
-            first_bound_exceeded_point, which is read here too.
+            first_bound_exceeded_point, which is read here too. If it was also
+            given amdahl_results, first_amdahl_ceiling_exceeded_point is read too.
+        amdahl_results: full output of amdahl.analyze_amdahl(). Optional — enables
+            the "Optimization Ceiling" category (how much fixing the bottleneck
+            would actually help, and what becomes the next constraint).
         usl_results: full output of usl.UniversalScalabilityModel.analyze() /
             run_usl_analysis(). Optional — enables sigma/kappa/reliability recommendations.
         little_law_results: full output of little_law.analyze_workload(). Optional —
@@ -1687,6 +1855,9 @@ def generate_recommendations(
         else None
     )
 
+    # --- J2b. Optimization Ceiling (Amdahl's Law, if amdahl_results was supplied) ---
+    recs.extend(_amdahl_recommendations(id_gen, amdahl_results))
+
     # --- B/C. CPU / Memory ---
     if bottleneck_confirmed_resource != "cpu":
         recs.extend(_cpu_recommendations(id_gen, results))
@@ -1720,6 +1891,7 @@ def generate_recommendations(
     # --- K. Scalability prediction ---
     recs.extend(_scalability_prediction_recommendations(id_gen, scalability_results))
     recs.extend(_asymptotic_bound_recommendations(id_gen, scalability_results))
+    recs.extend(_amdahl_ceiling_scalability_recommendations(id_gen, scalability_results))
 
     # --- L. Scaling strategy (vertical vs horizontal) ---
     recs.extend(_scaling_strategy_recommendation(id_gen, results, signals, health_summary))

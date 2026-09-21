@@ -148,6 +148,9 @@ class CSVParser:
             "P99": p99,
         }
 
+        if min_response_time > max_response_time:
+            raise CSVParsingError("Min Response Time cannot exceed Max Response Time.")
+
         if p95 > p99:
             raise CSVParsingError("P95 response time cannot exceed P99 response time.")
 

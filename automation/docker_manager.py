@@ -47,6 +47,20 @@ class DockerfileGenerationError(RuntimeError):
 # takes it explicitly - health_checker.py doesn't need its own
 # framework-port-awareness, it just polls whatever host_port this module
 # reports.
+#
+# For that resolved port to be correct, the app actually has to bind to
+# it: Flask/FastAPI/Django get there via an explicit gunicorn/uvicorn
+# --bind/--port flag. Express and Spring Boot have no such flag, so this
+# module sets ENV PORT / ENV SERVER_PORT instead, relying on
+# process.env.PORT (Express) and Spring's relaxed env-var binding
+# (Spring Boot) - both are the standard convention, but not guaranteed if
+# the app hardcodes its port. One case this doesn't cover: a resolved
+# Procfile run command that references "$PORT" - exec-form CMD (see
+# _to_exec_form below) doesn't invoke a shell, so it can't expand that
+# variable; it would be passed through literally. Procfiles are rare
+# outside Heroku-style repos, so this is left as a known gap rather than
+# reworked into shell-form CMD, which would reintroduce the signal-
+# forwarding problem exec form exists to avoid.
 
 
 _FRAMEWORK_DEFAULT_PORTS: Dict[str, int] = {
@@ -89,6 +103,38 @@ def _to_exec_form(command: str) -> str:
     return "[" + ", ".join(json.dumps(t) for t in tokens) + "]"
 
 
+_ENV_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _command_to_dockerfile_lines(command: str) -> str:
+    """
+    Builds the ENV + CMD Dockerfile lines for a run command. Procfile-
+    sourced commands commonly prefix inline env-var assignments (e.g.
+    'FLASK_ENV=production gunicorn app:app', a standard Heroku Procfile
+    pattern) - exec-form CMD has no shell to interpret that syntax, so
+    passed straight through it would try to execute a program literally
+    named "FLASK_ENV=production". Split those off into separate ENV
+    instructions instead, leaving a clean, actually-runnable CMD. A no-op
+    for the gunicorn/uvicorn commands this module builds itself, which
+    never start with an env assignment.
+    """
+    tokens = shlex.split(command)
+    if not tokens:
+        raise DockerfileGenerationError(f"Run command resolved to nothing runnable: {command!r}")
+
+    split_at = 0
+    while split_at < len(tokens) and _ENV_ASSIGNMENT_PATTERN.match(tokens[split_at]):
+        split_at += 1
+    env_tokens, exec_tokens = tokens[:split_at], tokens[split_at:]
+
+    if not exec_tokens:
+        raise DockerfileGenerationError(f"Run command resolved to nothing runnable: {command!r}")
+
+    env_lines = "".join(f"ENV {tok}\n" for tok in env_tokens)
+    exec_array = "[" + ", ".join(json.dumps(t) for t in exec_tokens) + "]"
+    return f"{env_lines}CMD {exec_array}\n"
+
+
 def _find_manifest_rel_path(detection_result: Dict[str, Any], preferred_order: Tuple[str, ...]) -> Optional[str]:
     manifest_files = detection_result.get("scan_summary", {}).get("manifest_files_found", {})
     for manifest_name in preferred_order:
@@ -112,9 +158,24 @@ def _python_install_line(manifest_rel_path: str) -> str:
     return f"pip install --no-cache-dir {project_dir}"
 
 
-# --------------------------------------------------------------------------
-# Per-framework Dockerfile generators
-# --------------------------------------------------------------------------
+def _python_copy_lines(manifest_rel_path: str) -> Tuple[str, str]:
+    """
+    Returns (copy_before_install, copy_after_install). requirements.txt
+    and Pipfile only need the manifest file itself to resolve
+    dependencies, so copying just that (before RUN pip install) lets
+    Docker cache the install layer across rebuilds that only touch
+    application code. pyproject.toml's `pip install {dir}` is different -
+    it installs the local project ITSELF via its build backend, which
+    needs the full source tree already present, not just the manifest -
+    so for that case the full copy has to happen up front instead,
+    sacrificing that caching benefit for a build that actually works.
+    """
+    if os.path.basename(manifest_rel_path) == "pyproject.toml":
+        return "COPY . .\n", ""
+    return f"COPY {manifest_rel_path} {manifest_rel_path}\n", "COPY . .\n"
+
+
+# --- Per-framework Dockerfile generators ---
 
 _PYTHON_MANIFEST_ORDER = ("requirements.txt", "pyproject.toml", "Pipfile")
 
@@ -152,16 +213,16 @@ def _generate_flask_dockerfile(
     if run_command is None:
         raise DockerfileGenerationError("Could not determine a run command for this Flask application.")
 
+    copy_before, copy_after = _python_copy_lines(manifest_rel_path)
     dockerfile = (
         f"FROM python:3.11-slim\n"
         f"WORKDIR /app\n"
-        f"COPY {manifest_rel_path} {manifest_rel_path}\n"
+        f"{copy_before}"
         f"RUN {install_line}\n"
         f"RUN pip install --no-cache-dir gunicorn\n"
-        f"COPY . .\n"
+        f"{copy_after}"
         f"EXPOSE {port}\n"
-        f"CMD {_to_exec_form(run_command)}\n"
-    )
+    ) + _command_to_dockerfile_lines(run_command)
     return dockerfile, notes
 
 
@@ -193,16 +254,16 @@ def _generate_fastapi_dockerfile(
     if run_command is None:
         raise DockerfileGenerationError("Could not determine a run command for this FastAPI application.")
 
+    copy_before, copy_after = _python_copy_lines(manifest_rel_path)
     dockerfile = (
         f"FROM python:3.11-slim\n"
         f"WORKDIR /app\n"
-        f"COPY {manifest_rel_path} {manifest_rel_path}\n"
+        f"{copy_before}"
         f"RUN {install_line}\n"
         f"RUN pip install --no-cache-dir uvicorn\n"
-        f"COPY . .\n"
+        f"{copy_after}"
         f"EXPOSE {port}\n"
-        f"CMD {_to_exec_form(run_command)}\n"
-    )
+    ) + _command_to_dockerfile_lines(run_command)
     return dockerfile, notes
 
 
@@ -236,16 +297,16 @@ def _generate_django_dockerfile(
             "capacity - a WSGI-based Procfile entry would give more representative results."
         )
 
+    copy_before, copy_after = _python_copy_lines(manifest_rel_path)
     dockerfile = (
         f"FROM python:3.11-slim\n"
         f"WORKDIR /app\n"
-        f"COPY {manifest_rel_path} {manifest_rel_path}\n"
+        f"{copy_before}"
         f"RUN {install_line}\n"
         f"RUN pip install --no-cache-dir gunicorn\n"
-        f"COPY . .\n"
+        f"{copy_after}"
         f"EXPOSE {port}\n"
-        f"CMD {_to_exec_form(run_command)}\n"
-    )
+    ) + _command_to_dockerfile_lines(run_command)
     return dockerfile, notes
 
 
@@ -272,14 +333,27 @@ def _generate_express_dockerfile(
     has_lock_file = os.path.isfile(os.path.join(project_path_abs, lock_file_rel))
 
     if has_lock_file:
-        install_cmd = f"cd {package_dir} && npm ci --omit=dev"
+        install_cmd = f"cd {package_dir} && npm ci"
         copy_lock_line = f"COPY {lock_file_rel} {lock_file_rel}\n"
     else:
-        install_cmd = f"cd {package_dir} && npm install --omit=dev"
+        install_cmd = f"cd {package_dir} && npm install"
         copy_lock_line = ""
         notes.append("No package-lock.json found; using 'npm install' instead of the more reproducible 'npm ci'.")
 
     workdir = "/app" if package_dir == "." else f"/app/{package_dir}"
+
+    # Nothing so far tells the app what port to listen on - only Flask/
+    # FastAPI/Django get an explicit --bind/--port flag (via gunicorn/
+    # uvicorn) below. Express has no equivalent CLI flag, but reading
+    # process.env.PORT is the near-universal convention for Node HTTP
+    # servers, so setting it here is the best available lever.
+    notes.append(
+        f"Setting ENV PORT={port} so the container's exposed port matches what the app "
+        f"listens on - this assumes the app reads process.env.PORT (the standard Express "
+        f"convention: `const port = process.env.PORT || ...`). If the app hardcodes a "
+        f"specific port instead, the container will actually listen there, not on {port}, "
+        f"and the health check/load test will fail to connect."
+    )
 
     dockerfile = (
         f"FROM node:20-slim\n"
@@ -289,9 +363,9 @@ def _generate_express_dockerfile(
         f"RUN {install_cmd}\n"
         f"COPY . .\n"
         f"WORKDIR {workdir}\n"
+        f"ENV PORT={port}\n"
         f"EXPOSE {port}\n"
-        f"CMD {_to_exec_form(run_command)}\n"
-    )
+    ) + _command_to_dockerfile_lines(run_command)
     return dockerfile, notes
 
 
@@ -322,20 +396,28 @@ def _generate_springboot_dockerfile(
 
     workdir = "/app" if project_root == "." else f"/app/{project_root}"
 
+    # Spring Boot's relaxed environment-variable binding maps SERVER_PORT
+    # to the server.port property automatically, with environment
+    # variables taking precedence over application.properties/.yml - so
+    # this reliably overrides whatever port the repo's own config
+    # declares, without needing to parse/rewrite that config file.
+    notes.append(
+        f"Setting ENV SERVER_PORT={port} so the app listens on the port this container "
+        f"exposes, regardless of any server.port value in application.properties/.yml."
+    )
+
     dockerfile = (
         f"FROM {base_image}\n"
         f"WORKDIR /app\n"
         f"COPY . .\n"
         f"WORKDIR {workdir}\n"
+        f"ENV SERVER_PORT={port}\n"
         f"EXPOSE {port}\n"
-        f"CMD {_to_exec_form(run_command)}\n"
-    )
+    ) + _command_to_dockerfile_lines(run_command)
     return dockerfile, notes
 
 
-# --------------------------------------------------------------------------
-# Docker Manager
-# --------------------------------------------------------------------------
+# --- Docker Manager ---
 
 class DockerManager:
     """Handles Docker image building (including auto-generating a
@@ -390,9 +472,7 @@ class DockerManager:
         except OSError as e:
             raise RuntimeError(f"Failed to execute Docker command: {e}")
 
-    # ------------------------------------------------------------------
-    # Dockerfile generation
-    # ------------------------------------------------------------------
+    # --- Dockerfile generation ---
 
     def _generate_dockerfile(
         self,
@@ -421,9 +501,7 @@ class DockerManager:
 
         return content, port, notes
 
-    # ------------------------------------------------------------------
-    # Build
-    # ------------------------------------------------------------------
+    # --- Build ---
 
     def build_image(
         self,
@@ -521,15 +599,14 @@ class DockerManager:
             "generation_notes": generation_notes,
         }
 
-    # ------------------------------------------------------------------
-    # Run / stop / status
-    # ------------------------------------------------------------------
+    # --- Run / stop / status ---
 
     def run_container(
         self,
         image_name: str = "performance-image",
         container_name: str = "performance-container",
         container_port: Optional[int] = None,
+        instrumentation_manager: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Start a Docker container and return info needed by the health-check and runtime-monitoring stages.
 
@@ -548,13 +625,32 @@ class DockerManager:
 
         self._run_command(["docker", "rm", "-f", container_name], timeout=self.run_timeout_seconds)
 
+        docker_run_command = [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "-p",
+            f"{resolved_host_port}:{resolved_container_port}",
+        ]
+
+        instrumentation_enabled = False
+
+        if instrumentation_manager is not None:
+            if not instrumentation_manager.is_installed():
+                instrumentation_manager.install()
+
+            instrumentation_args = instrumentation_manager.docker_run_args()
+
+            if instrumentation_args:
+                docker_run_command.extend(instrumentation_args)
+                instrumentation_enabled = True
+
+        docker_run_command.append(image_name)
+
         result = self._run_command(
-            [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "-p", f"{resolved_host_port}:{resolved_container_port}",
-                image_name,
-            ],
+            docker_run_command,
             timeout=self.run_timeout_seconds,
         )
 
@@ -592,6 +688,7 @@ class DockerManager:
             "host": f"http://localhost:{resolved_host_port}",
             "port": resolved_host_port,
             "container_port": resolved_container_port,
+            "instrumentation_enabled": instrumentation_enabled,
             "message": "Docker container started successfully.",
         }
 

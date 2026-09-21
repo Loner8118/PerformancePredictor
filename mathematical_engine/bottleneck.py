@@ -46,12 +46,22 @@ class BottleneckCalculationError(RuntimeError):
 # CPU/disk/network do. It stays exactly where it already is, as a
 # separate pressure check in capacity.py.
 #
-# Also deliberately excluded: database, external APIs, and anything else
-# you're not currently monitoring. This module reports the bottleneck
-# *among monitored resources* - it cannot flag a resource it never saw.
-# Once per-request visit-ratio tracking exists for those (queries/
-# request, API calls/request), that's Forced Flow Law territory, a
-# separate module.
+# Also: database, external APIs, and anything else Utilization Law can't
+# reach (no %utilization reading exists for them) are no longer entirely
+# excluded. Pass forced_flow.to_bottleneck_resources()'s output as
+# "component_demands" and those components compete for the identified
+# bottleneck alongside cpu/disk/network on equal footing, using the same
+# D_i they were computed with (Forced Flow's V_i*S_i instead of
+# Utilization Law's U_i/X - see forced_flow.py). Without component_demands
+# supplied, this still only ever reports the bottleneck *among monitored
+# resources* - it cannot flag a resource it never saw.
+#
+# Queue-based evidence (queueing.py's congestion_risk/stability, from
+# arrival/service RATES - a completely different measurement path than
+# resource %utilization) is folded in too, but only as a cross-check, not
+# as a third demand source: pass queueing_result to analyze() and the
+# result includes queue_cross_check, flagging agreement or disagreement
+# between the two independent signals rather than silently trusting one.
 #
 # CPU utilization is a true measured busy-time fraction. Disk/network
 # utilization here is an *approximation*: observed throughput rate
@@ -60,9 +70,7 @@ class BottleneckCalculationError(RuntimeError):
 # is_approximate=True.
 
 
-# --------------------------------------------------------------------------
-# Configuration
-# --------------------------------------------------------------------------
+# --- Configuration ---
 
 @dataclass
 class ResourceCapacityConfig:
@@ -103,9 +111,7 @@ class BottleneckSignalThresholds:
     dominant_margin: float = 0.20  # bottleneck must lead the runner-up by this fraction of D_max to count as "clear"
 
 
-# --------------------------------------------------------------------------
-# Validated workload container
-# --------------------------------------------------------------------------
+# --- Validated workload container ---
 
 @dataclass(frozen=True)
 class ResourceUtilization:
@@ -127,11 +133,27 @@ class ResourceUtilization:
 
 
 @dataclass(frozen=True)
+class ComponentDemand:
+    """
+    A component's service demand computed OUTSIDE the Utilization Law -
+    typically forced_flow.py's D_i = V_i * S_i, for components like a
+    database or cache that have no %utilization reading to build a
+    ResourceUtilization from. Merged into the same demands/bottleneck
+    computation as cpu/disk/network so the bottleneck engine can identify
+    ANY of them as the limiting resource, not only cpu/disk/network.
+    """
+    name: str
+    service_demand: float
+    source: str
+
+
+@dataclass(frozen=True)
 class BottleneckWorkload:
     throughput: float
     current_users: Optional[float]
     think_time: float
     resources: List[ResourceUtilization]
+    component_demands: List[ComponentDemand]
     metadata: Dict[str, Any]
 
     @staticmethod
@@ -146,11 +168,22 @@ class BottleneckWorkload:
                bound and N* alongside the bottleneck-resource bound.
             3. "think_time" (Z) is optional, defaults to 0.0 seconds.
             4. At least one of "cpu_usage" (percent, 0-100),
-               "disk_io" (MB/s), "network_io" (MB/s) must be present -
-               these map directly onto the runtime metrics already
-               flowing through the rest of the pipeline. memory_usage is
-               intentionally not accepted (see module docstring).
-            5. "metadata" is passed through unchanged.
+               "disk_io" (MB/s), "network_io" (MB/s), or
+               "component_demands" must be present - the first three map
+               directly onto the runtime metrics already flowing through
+               the rest of the pipeline. memory_usage is intentionally
+               not accepted (see module docstring).
+            5. "component_demands" is optional: {name: {"service_demand":
+               seconds, "source": str}, ...} - exactly the shape
+               forced_flow.to_bottleneck_resources() produces, so that
+               function's output can be passed straight through with no
+               adapter code. Lets a database, cache, or external API
+               compete as the identified bottleneck alongside cpu/disk/
+               network, since Forced Flow computes D_i a different way
+               (visits/request * service time per visit) than the
+               Utilization Law does (%utilization / throughput) - see
+               module docstring.
+            6. "metadata" is passed through unchanged.
         """
         if not isinstance(data, dict):
             raise BottleneckValidationError("Input must be a dictionary.")
@@ -256,10 +289,40 @@ class BottleneckWorkload:
                 exceeds_configured_capacity=net_fraction > 1.0,
             ))
 
-        if not resources:
+        component_demands: List[ComponentDemand] = []
+        raw_component_demands = data.get("component_demands")
+        if raw_component_demands is not None:
+            if not isinstance(raw_component_demands, dict):
+                raise BottleneckValidationError("'component_demands' must be a dictionary if provided.")
+            resource_names = {r.name for r in resources}
+            for name, info in raw_component_demands.items():
+                if not isinstance(info, dict) or "service_demand" not in info:
+                    raise BottleneckValidationError(
+                        f"component_demands[{name!r}] must be a dict with a 'service_demand' key "
+                        f"(the shape forced_flow.to_bottleneck_resources() produces)."
+                    )
+                if name in resource_names:
+                    raise BottleneckValidationError(
+                        f"component_demands key {name!r} collides with a monitored resource name."
+                    )
+                sd_raw = info["service_demand"]
+                if isinstance(sd_raw, bool) or not isinstance(sd_raw, (int, float)):
+                    raise BottleneckValidationError(
+                        f"component_demands[{name!r}]['service_demand'] must be numeric."
+                    )
+                service_demand = float(sd_raw)
+                if not math.isfinite(service_demand) or service_demand < 0:
+                    raise BottleneckValidationError(
+                        f"component_demands[{name!r}]['service_demand'] must be a non-negative finite number."
+                    )
+                component_demands.append(
+                    ComponentDemand(name=name, service_demand=service_demand, source=info.get("source", "external"))
+                )
+
+        if not resources and not component_demands:
             raise BottleneckValidationError(
-                "At least one monitored resource ('cpu_usage', 'disk_io', or 'network_io') "
-                "must be provided."
+                "At least one monitored resource ('cpu_usage', 'disk_io', 'network_io') or "
+                "'component_demands' entry must be provided."
             )
 
         metadata = data.get("metadata", {})
@@ -271,13 +334,12 @@ class BottleneckWorkload:
             current_users=current_users,
             think_time=think_time,
             resources=resources,
+            component_demands=component_demands,
             metadata=metadata,
         )
 
 
-# --------------------------------------------------------------------------
-# Core equations (pure functions, no state)
-# --------------------------------------------------------------------------
+# --- Core equations (pure functions, no state) ---
 
 def calculate_service_demand(utilization: float, throughput: float) -> float:
     """
@@ -403,9 +465,7 @@ def classify_bottleneck_severity(
     return "Substantial headroom"
 
 
-# --------------------------------------------------------------------------
-# Signals (indicators only - no recommendations generated here)
-# --------------------------------------------------------------------------
+# --- Signals (indicators only - no recommendations generated here) ---
 
 def _generate_signals(
     demands: Dict[str, float],
@@ -431,9 +491,74 @@ def _generate_signals(
     }
 
 
-# --------------------------------------------------------------------------
-# Unavailable-result helper
-# --------------------------------------------------------------------------
+# --- Queueing cross-check (independent corroborating/contradicting evidence) ---
+
+_SEVERITY_TO_EXPECTED_CONGESTION: Dict[str, Sequence[str]] = {
+    "At or beyond theoretical ceiling": ("High", "Critical"),
+    "Near ceiling": ("Medium", "High", "Critical"),
+    "Moderate headroom": ("Low", "Medium"),
+    "Substantial headroom": ("Low",),
+}
+
+
+def _cross_check_queueing(
+    bottleneck_severity: str,
+    queueing_result: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Cross-references the demand-based bottleneck severity against
+    queueing.py's independently-derived congestion_risk/stability - a
+    completely different measurement path (arrival/service RATES, not
+    resource %utilization). Agreement is corroborating evidence;
+    disagreement is worth surfacing rather than silently trusting one
+    story over the other - it often means the true bottleneck is a
+    resource not monitored here at all (e.g. a database with no
+    component_demands supplied), or that queueing.py's service_rate was
+    estimated rather than directly measured.
+
+    Returns None if no queueing_result was supplied, or it has neither
+    field to compare - this is optional corroborating evidence, not a
+    requirement.
+    """
+    if not isinstance(queueing_result, dict):
+        return None
+
+    congestion_risk = queueing_result.get("congestion_risk")
+    stability = queueing_result.get("stability")
+    if congestion_risk is None and stability is None:
+        return None
+
+    expected = _SEVERITY_TO_EXPECTED_CONGESTION.get(bottleneck_severity)
+    agrees = expected is None or congestion_risk in expected
+    note = None
+
+    if not agrees:
+        note = (
+            f"Demand-based bottleneck severity ({bottleneck_severity!r}) and queueing-based "
+            f"congestion_risk ({congestion_risk!r}) disagree - this can mean the actual "
+            f"bottleneck is a resource not monitored here (e.g. a database with no "
+            f"component_demands supplied), or that queueing.py's service_rate was estimated "
+            f"rather than measured."
+        )
+    elif stability == "Unstable" and bottleneck_severity not in (
+        "At or beyond theoretical ceiling", "Near ceiling",
+    ):
+        agrees = False
+        note = (
+            f"Queueing analysis reports the system as 'Unstable', but demand-based bottleneck "
+            f"severity is only {bottleneck_severity!r} - the true bottleneck is likely a "
+            f"resource not monitored here."
+        )
+
+    return {
+        "congestion_risk": congestion_risk,
+        "stability": stability,
+        "agrees_with_demand_based_severity": agrees,
+        "note": note,
+    }
+
+
+# --- Unavailable-result helper ---
 
 def unavailable_bottleneck_result(
     reason: str,
@@ -454,9 +579,7 @@ def unavailable_bottleneck_result(
     }
 
 
-# --------------------------------------------------------------------------
-# Analyzer
-# --------------------------------------------------------------------------
+# --- Analyzer ---
 
 class BottleneckAnalyzer:
     """
@@ -490,14 +613,22 @@ class BottleneckAnalyzer:
         self._bottleneck_bound: Optional[float] = None
         self._analyzed = False
 
-    def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze(self, data: Dict[str, Any], queueing_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Args:
             data: {"throughput": ..., "cpu_usage": ... (optional),
                    "disk_io": ... (optional), "network_io": ... (optional),
-                   "current_users": ... (optional), "think_time": ... (optional),
+                   "component_demands": ... (optional - see
+                   BottleneckWorkload.from_raw()), "current_users": ...
+                   (optional), "think_time": ... (optional),
                    "metadata": {...} (optional)}. At least one of
-                   cpu_usage/disk_io/network_io is required.
+                   cpu_usage/disk_io/network_io/component_demands is
+                   required.
+            queueing_result: optional - the direct output of
+                queueing.analyze_queue()/analyze_queue_safe(), for the
+                cross-check against demand-based severity (see
+                _cross_check_queueing()). Purely corroborating evidence -
+                omitting it doesn't change the core analysis at all.
 
         Raises:
             BottleneckValidationError: bad/missing input.
@@ -508,6 +639,8 @@ class BottleneckAnalyzer:
             resource.name: calculate_service_demand(resource.utilization, workload.throughput)
             for resource in workload.resources
         }
+        demands.update({cd.name: cd.service_demand for cd in workload.component_demands})
+
         bottleneck_name, bottleneck_demand = find_bottleneck(demands)
         total_demand = sum(demands.values())
 
@@ -532,6 +665,8 @@ class BottleneckAnalyzer:
             thresholds=self.signal_thresholds,
         )
 
+        queue_cross_check = _cross_check_queueing(severity, queueing_result)
+
         # Cache the fitted figures for project_bound()/check_prediction().
         self._workload = workload
         self._demands = demands
@@ -541,12 +676,12 @@ class BottleneckAnalyzer:
         self._bottleneck_bound = bound_info["bottleneck_throughput_bound"]
         self._analyzed = True
 
+        monitored_names = [r.name for r in workload.resources] + [cd.name for cd in workload.component_demands]
         bottleneck_note = (
-            "This is the bottleneck among monitored resources (cpu/disk/network) only - "
-            "unmonitored resources such as a database or external API cannot be identified "
-            "as the bottleneck here."
+            f"This is the bottleneck among monitored resources ({', '.join(monitored_names)}) only - "
+            f"any other resource not listed here cannot be identified as the bottleneck."
         )
-        if len(workload.resources) == 1:
+        if len(monitored_names) == 1:
             bottleneck_note += (
                 f" Only '{bottleneck_name}' is currently monitored, so this reflects the "
                 f"only available signal, not a comparison against alternatives."
@@ -558,14 +693,28 @@ class BottleneckAnalyzer:
             "current_users": workload.current_users,
             "think_time": workload.think_time,
             "resources": {
-                r.name: {
-                    "utilization": r.utilization,
-                    "raw_utilization": r.raw_utilization,
-                    "is_approximate": r.is_approximate,
-                    "exceeds_configured_capacity": r.exceeds_configured_capacity,
-                    "service_demand": demands[r.name],
-                }
-                for r in workload.resources
+                **{
+                    r.name: {
+                        "utilization": r.utilization,
+                        "raw_utilization": r.raw_utilization,
+                        "is_approximate": r.is_approximate,
+                        "exceeds_configured_capacity": r.exceeds_configured_capacity,
+                        "service_demand": demands[r.name],
+                        "source": "utilization_law",
+                    }
+                    for r in workload.resources
+                },
+                **{
+                    cd.name: {
+                        "utilization": None,
+                        "raw_utilization": None,
+                        "is_approximate": None,
+                        "exceeds_configured_capacity": None,
+                        "service_demand": demands[cd.name],
+                        "source": cd.source,
+                    }
+                    for cd in workload.component_demands
+                },
             },
             "bottleneck": {
                 "resource": bottleneck_name,
@@ -576,6 +725,7 @@ class BottleneckAnalyzer:
             "asymptotic_bounds": bound_info,
             "observed_vs_bound": observed_comparison,
             "bottleneck_severity": severity,
+            "queue_cross_check": queue_cross_check,
             "signals": signals,
             "units": {
                 "throughput": "requests/sec",
@@ -644,44 +794,49 @@ class BottleneckAnalyzer:
             raise BottleneckCalculationError("analyze() must be called before this operation.")
 
 
-# --------------------------------------------------------------------------
-# Convenience functional wrappers
-# --------------------------------------------------------------------------
+# --- Convenience functional wrappers ---
 
 def analyze_bottleneck(
     data: Dict[str, Any],
     capacity_config: Optional[ResourceCapacityConfig] = None,
     severity_thresholds: Optional[BottleneckSeverityThresholds] = None,
     signal_thresholds: Optional[BottleneckSignalThresholds] = None,
+    queueing_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     One-shot: validate + analyze a single snapshot. Raises if none of
-    cpu_usage/disk_io/network_io are present. For project_bound()/
-    check_prediction() (cross-checking forward predictions), construct
-    a BottleneckAnalyzer directly and keep the instance around instead.
+    cpu_usage/disk_io/network_io/component_demands are present. For
+    project_bound()/check_prediction() (cross-checking forward
+    predictions), construct a BottleneckAnalyzer directly and keep the
+    instance around instead.
     """
     analyzer = BottleneckAnalyzer(
         capacity_config=capacity_config,
         severity_thresholds=severity_thresholds,
         signal_thresholds=signal_thresholds,
     )
-    return analyzer.analyze(data)
+    return analyzer.analyze(data, queueing_result=queueing_result)
 
 
 def analyze_bottleneck_safe(data: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
     """
     Same as analyze_bottleneck(), except when none of
-    cpu_usage/disk_io/network_io are present in `data`, it returns
-    unavailable_bottleneck_result() instead of raising - keeps pipeline
-    code running when resource metrics aren't wired up for a given call.
+    cpu_usage/disk_io/network_io/component_demands are present in `data`,
+    it returns unavailable_bottleneck_result() instead of raising - keeps
+    pipeline code running when resource metrics aren't wired up for a
+    given call.
     """
-    has_any_resource = isinstance(data, dict) and any(
-        data.get(key) is not None for key in ("cpu_usage", "disk_io", "network_io")
+    has_any_resource = isinstance(data, dict) and (
+        any(data.get(key) is not None for key in ("cpu_usage", "disk_io", "network_io"))
+        or bool(data.get("component_demands"))
     )
 
     if not has_any_resource:
         return unavailable_bottleneck_result(
-            reason="No resource metrics ('cpu_usage', 'disk_io', or 'network_io') were provided.",
+            reason=(
+                "No resource metrics ('cpu_usage', 'disk_io', 'network_io') or "
+                "'component_demands' were provided."
+            ),
             throughput=data.get("throughput") if isinstance(data, dict) else None,
             metadata=data.get("metadata") if isinstance(data, dict) else None,
         )

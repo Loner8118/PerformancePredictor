@@ -19,14 +19,22 @@ class LocustGenerationError(ValueError):
 # FastAPI, Django, Express.js, or Spring Boot.
 #
 # The one thing that genuinely differs per framework is path-parameter
-# syntax, and each framework's syntax has to be substituted with an
-# actual value BEFORE Locust can request the path (a literal
-# "/users/<int:id>" or "/users/{id}" is not a real URL). This is resolved
-# at GENERATION time (baking a concrete path like "/users/1" directly
-# into the generated file) rather than at Locust runtime, since
-# route_discovery.py already extracted each route's typed parameter list
-# - generation time is where that structured data is available and where
-# framework-specific syntax choice can be made once, not per-request.
+# syntax, and it has to be substituted with an actual value BEFORE Locust
+# can request the path (a literal "/users/<int:id>" or "/users/{id}" is
+# not a real URL). This is resolved at GENERATION time (baking a concrete
+# path like "/users/1" directly into the generated file) rather than at
+# Locust runtime, since route_discovery.py already extracted each route's
+# typed parameter list - generation time is where that structured data is
+# available.
+#
+# Substitution applies every known placeholder syntax unconditionally
+# rather than branching on the detected framework - route_discovery.py
+# doesn't always preserve a framework's native syntax verbatim (Django's
+# re_path() regex groups get normalized to {id} form before this module
+# ever sees them, while path() converters stay as <int:id>), so a strict
+# per-framework mapping silently missed real cases. Trying all four
+# patterns is safe: none of them can match another syntax's placeholder
+# shape.
 #
 # Everything else (the status-code tracking listener, the HttpUser task
 # structure) is already fully framework-agnostic, since it only cares
@@ -37,9 +45,7 @@ class LocustGenerationError(ValueError):
 _SUPPORTED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 _MAX_TASKS = 200  # defensive cap - a repo with an unusually large number of routes shouldn't produce an unbounded locustfile
 
-# --------------------------------------------------------------------------
-# Path-parameter substitution (framework-aware)
-# --------------------------------------------------------------------------
+# --- Path-parameter substitution ---
 #
 # Each framework embeds path parameters differently:
 #   Flask / Django path():   <int:id>  or  <id>
@@ -81,25 +87,27 @@ def _substitute(pattern: "re.Pattern[str]", path: str, values: Dict[str, str]) -
     return pattern.sub(lambda m: values.get(m.group(1), _DEFAULT_SAMPLE_VALUE), path)
 
 
-def _make_safe_path(path: str, params: Optional[List[Dict[str, str]]], framework: Optional[str]) -> str:
+def _make_safe_path(path: str, params: Optional[List[Dict[str, str]]]) -> str:
     """Replace this route's path-parameter placeholders with concrete test
-    values, using the syntax appropriate to the detected framework."""
+    values. Applies every known placeholder syntax unconditionally rather
+    than branching on the detected framework - route_discovery.py doesn't
+    always preserve a framework's native syntax verbatim (Django's
+    re_path() regex groups get normalized to {name} form before this
+    module ever sees them, while path() converters stay as <name>), so
+    assuming one syntax per framework silently missed real cases. Applying
+    all four patterns is safe: none of them can spuriously match another
+    syntax's placeholder shape, and a path with no placeholders at all is
+    simply left untouched by every pattern."""
     values = _build_param_values(params)
 
-    if framework == "django":
-        # Order matters: consume (?P<name>...) as a whole unit first, since
-        # it contains "<name>" as a substring that the angle pattern below
-        # would otherwise partially (and incorrectly) match on its own.
-        path = _substitute(_DJANGO_REGEX_GROUP_PATTERN, path, values)
-        path = _substitute(_ANGLE_PARAM_PATTERN, path, values)
-    elif framework == "flask":
-        path = _substitute(_ANGLE_PARAM_PATTERN, path, values)
-    elif framework in ("fastapi", "springboot"):
-        path = _substitute(_CURLY_PARAM_PATTERN, path, values)
-    elif framework == "express":
-        path = _substitute(_COLON_PARAM_PATTERN, path, values)
-    # Unknown framework: no substitution attempted - the generated
-    # locustfile's own runtime _safe_path() is a last-resort backstop.
+    # Order matters only for the first two: (?P<name>...) must be consumed
+    # as a whole unit before the angle-bracket pattern, since it contains
+    # "<name>" as a substring that would otherwise be partially (and
+    # incorrectly) matched on its own.
+    path = _substitute(_DJANGO_REGEX_GROUP_PATTERN, path, values)
+    path = _substitute(_ANGLE_PARAM_PATTERN, path, values)
+    path = _substitute(_CURLY_PARAM_PATTERN, path, values)
+    path = _substitute(_COLON_PARAM_PATTERN, path, values)
 
     if not path.startswith("/"):
         path = "/" + path
@@ -124,9 +132,7 @@ def _path_to_identifier(path: str) -> str:
     return identifier or "root"
 
 
-# --------------------------------------------------------------------------
-# Generator
-# --------------------------------------------------------------------------
+# --- Generator ---
 
 class LocustGenerator:
     """
@@ -139,6 +145,20 @@ class LocustGenerator:
     status_counts.json - unchanged from before, since that part never
     depended on the framework being tested.
     """
+
+    def __init__(
+        self,
+        max_tasks: int = _MAX_TASKS,
+        wait_time_min: float = 0.1,
+        wait_time_max: float = 0.5,
+    ) -> None:
+        if max_tasks <= 0:
+            raise LocustGenerationError("max_tasks must be greater than zero.")
+        if wait_time_min < 0 or wait_time_max < wait_time_min:
+            raise LocustGenerationError("wait_time_min must be >= 0 and <= wait_time_max.")
+        self.max_tasks = max_tasks
+        self.wait_time_min = wait_time_min
+        self.wait_time_max = wait_time_max
 
     def generate(self, project_path: str, route_discovery_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -166,14 +186,14 @@ class LocustGenerator:
         status_file = os.path.join(project_path, "status_counts.json")
         self._initialize_status_file(status_file)
 
-        tasks, skipped_unsupported_method_count, truncated = self._build_tasks(routes, framework)
+        tasks, skipped_unsupported_method_count, truncated = self._build_tasks(routes)
         used_fallback_route = not tasks
 
         with open(locust_path, "w", encoding="utf-8") as f:
             self._write_header(f, status_file)
             self._write_status_listener(f)
             self._write_status_saver(f)
-            self._write_user_class(f, tasks)
+            self._write_user_class(f, tasks, self.wait_time_min, self.wait_time_max)
 
         print("locustfile.py generated successfully.")
 
@@ -188,18 +208,16 @@ class LocustGenerator:
             "truncated": truncated,
         }
 
-    # ------------------------------------------------------------------
-    # Task construction
-    # ------------------------------------------------------------------
+    # --- Task construction ---
 
-    def _build_tasks(self, routes: List[Dict[str, Any]], framework: Optional[str]):
+    def _build_tasks(self, routes: List[Dict[str, Any]]):
         tasks: List[Dict[str, str]] = []
         used_names = set()
         skipped_unsupported_method_count = 0
         truncated = False
 
         for route in routes:
-            if len(tasks) >= _MAX_TASKS:
+            if len(tasks) >= self.max_tasks:
                 truncated = True
                 break
 
@@ -212,7 +230,7 @@ class LocustGenerator:
                 skipped_unsupported_method_count += 1
                 continue
 
-            safe_path = _make_safe_path(path, route.get("params"), framework)
+            safe_path = _make_safe_path(path, route.get("params"))
 
             handler = route.get("handler")
             base_name = handler if isinstance(handler, str) and handler else _path_to_identifier(path)
@@ -232,9 +250,7 @@ class LocustGenerator:
 
         return tasks, skipped_unsupported_method_count, truncated
 
-    # ------------------------------------------------------------------
-    # File writing
-    # ------------------------------------------------------------------
+    # --- File writing ---
 
     @staticmethod
     def _write_header(f, status_file: str) -> None:
@@ -315,10 +331,10 @@ class LocustGenerator:
         )
 
     @staticmethod
-    def _write_user_class(f, tasks: List[Dict[str, str]]) -> None:
+    def _write_user_class(f, tasks: List[Dict[str, str]], wait_time_min: float, wait_time_max: float) -> None:
         f.write(
             "class WebsiteUser(HttpUser):\n"
-            "    wait_time = between(0.1, 0.5)\n\n"
+            f"    wait_time = between({wait_time_min!r}, {wait_time_max!r})\n\n"
             "    def _safe_path(self, path):\n"
             "        \"\"\"Defense-in-depth: strip any leftover route-parameter\n"
             "        syntax that generation-time substitution may have missed,\n"
@@ -378,6 +394,8 @@ class LocustGenerator:
             raise RuntimeError(f"Could not initialize status_counts.json: {e}") from e
 
 
-def generate_locustfile(project_path: str, route_discovery_result: Dict[str, Any]) -> Dict[str, Any]:
-    """One-shot: construct a LocustGenerator and run generate()."""
-    return LocustGenerator().generate(project_path, route_discovery_result)
+def generate_locustfile(project_path: str, route_discovery_result: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+    """One-shot: construct a LocustGenerator and run generate(). See
+    LocustGenerator for configurable options (max_tasks, wait_time_min,
+    wait_time_max)."""
+    return LocustGenerator(**kwargs).generate(project_path, route_discovery_result)

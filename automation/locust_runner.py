@@ -14,7 +14,7 @@ import numpy as np
 from metrics.csv_parser import CSVParser
 from metrics.runtime_monitor import RuntimeMonitor
 
-SERVICE_RATE_SOURCE = "estimated_from_lowest_load_response_time"
+SERVICE_RATE_SOURCE = "estimated_from_peak_observed_throughput"
 
 
 class LocustRunnerError(RuntimeError):
@@ -49,6 +49,16 @@ class LocustConfigurationError(LocustRunnerError, ValueError):
 # would hang the entire pipeline indefinitely, the same class of bug
 # already fixed in github_manager.py's git clone and docker_manager.py's
 # docker build/run. See _execute_locust_test() below.
+#
+# Also fixed: Locust's own default behavior is to exit with code 1 if
+# ANY request failed during the run (see --exit-code-on-error in
+# Locust's docs) - but failed requests are expected, useful data here,
+# especially near saturation, which is exactly the load region this
+# pipeline is trying to characterize. Without --exit-code-on-error 0,
+# a single failed request at any point would abort the entire
+# multi-level, multi-repetition experiment. Pass/fail is judged from
+# error_rate/status counts (already collected independently), not
+# Locust's own opinion of whether the run "succeeded".
 
 
 _RUN_TIME_UNIT_PATTERN = re.compile(r"(\d+)\s*([hms])", re.IGNORECASE)
@@ -384,6 +394,16 @@ class LocustRunner:
             "-t", str(run_time),
             "--csv", csv_prefix,
             "--only-summary",
+            # Locust's own default is to exit 1 if ANY request failed during
+            # the run - but failed requests are expected, useful DATA here
+            # (especially near saturation, which is exactly the load region
+            # this pipeline cares about most), not a sign the test itself
+            # broke. Without this flag, a single failed request at any point
+            # would abort the entire multi-level, multi-repetition
+            # experiment and discard everything collected so far. Actual
+            # pass/fail is judged from error_rate/status counts (already
+            # collected independently below), not Locust's own opinion.
+            "--exit-code-on-error", "0",
         ]
 
         try:

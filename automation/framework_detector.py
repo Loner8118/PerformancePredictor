@@ -11,9 +11,7 @@ class FrameworkDetectionError(ValueError):
     """Bad input (e.g. repo_path doesn't exist)."""
 
 
-# --------------------------------------------------------------------------
-# Scan bounds (configurable via FrameworkDetector.__init__)
-# --------------------------------------------------------------------------
+# --- Scan bounds (configurable via FrameworkDetector.__init__) ---
 
 DEFAULT_MAX_DEPTH = 6
 DEFAULT_MAX_FILES_SCANNED = 500
@@ -37,9 +35,7 @@ def _should_skip_dir(name: str) -> bool:
     return name.startswith(".") or name in _SKIP_DIR_NAMES
 
 
-# --------------------------------------------------------------------------
-# Configuration
-# --------------------------------------------------------------------------
+# --- Configuration ---
 
 @dataclass
 class SignalWeights:
@@ -74,14 +70,12 @@ _SUPPORT_TIER: Dict[str, str] = {
     "flask": "full",
     "fastapi": "full",
     "express": "full",
-    "django": "best-effort",
-    "springboot": "best-effort",
+    "django": "full",
+    "springboot": "full",
 }
 
 
-# --------------------------------------------------------------------------
-# Framework definitions (data, not code)
-# --------------------------------------------------------------------------
+# --- Framework definitions (data, not code) ---
 
 @dataclass(frozen=True)
 class FrameworkDefinition:
@@ -143,10 +137,23 @@ FRAMEWORK_DEFINITIONS: Tuple[FrameworkDefinition, ...] = (
         language="python",
         manifest_extensions=("requirements.txt", "pyproject.toml", "Pipfile"),
         dependency_names=("django",),
-        structural_filenames=("manage.py", "settings.py", "wsgi.py", "asgi.py"),
+        structural_filenames=("manage.py", "settings.py", "wsgi.py", "asgi.py", "urls.py"),
         structural_content_patterns=(
             ("execute_from_command_line", re.compile(r"execute_from_command_line")),
             ("INSTALLED_APPS", re.compile(r"\bINSTALLED_APPS\b")),
+            ("get_wsgi_application", re.compile(r"get_wsgi_application\s*\(")),
+            ("get_asgi_application", re.compile(r"get_asgi_application\s*\(")),
+        ),
+        # Structural markers alone (manage.py, settings.py) tell you "this is
+        # probably Django" but not much else. These patterns are checked
+        # across every .py file, so they also help pin down which app module
+        # actually wires up the URLs/models - useful when settings.py and the
+        # real app code live in different subpackages.
+        code_patterns=(
+            ("django.urls import", re.compile(r"\bfrom\s+django\.urls\s+import\b")),
+            ("django.db model definition", re.compile(r"class\s+\w+\s*\(\s*models\.Model\s*\)")),
+            ("django.contrib.admin import", re.compile(r"\bfrom\s+django\.contrib\s+import\s+admin\b")),
+            ("django views/shortcuts import", re.compile(r"\bfrom\s+django\.(?:shortcuts|views)\b")),
         ),
         source_extensions=(".py",),
     ),
@@ -160,6 +167,8 @@ FRAMEWORK_DEFINITIONS: Tuple[FrameworkDefinition, ...] = (
             ("express require", re.compile(r"""require\(\s*['"]express['"]\s*\)""")),
             ("express import", re.compile(r"""\bimport\s+\w+\s+from\s+['"]express['"]""")),
             ("express instantiation", re.compile(r"\w+\s*=\s*express\s*\(\s*\)")),
+            ("express.Router usage", re.compile(r"express\.Router\s*\(\s*\)")),
+            ("app.listen call", re.compile(r"\.listen\s*\(\s*(?:\d|process\.env)")),
         ),
         source_extensions=(".js", ".mjs", ".cjs", ".ts", ".tsx"),
     ),
@@ -169,18 +178,30 @@ FRAMEWORK_DEFINITIONS: Tuple[FrameworkDefinition, ...] = (
         language="java",
         manifest_extensions=("pom.xml", "build.gradle", "build.gradle.kts"),
         dependency_substring_fallback="spring-boot-starter",
+        # application.properties/.yml aren't Java files, but the structural-
+        # marker mechanism only cares about exact filename, so this works the
+        # same way manage.py does for Django - and server.port here is often
+        # the only place the app's actual listen port is declared.
+        structural_filenames=("application.properties", "application.yml", "application.yaml"),
+        structural_content_patterns=(
+            ("server.port config", re.compile(r"server\.port\s*[:=]")),
+            ("spring.application.name config", re.compile(r"spring\.application\.name")),
+        ),
         code_patterns=(
-            ("@SpringBootApplication", re.compile(r"@SpringBootApplication")),
+            ("@SpringBootApplication", re.compile(r"@SpringBootApplication\b")),
             ("SpringApplication.run", re.compile(r"SpringApplication\.run\s*\(")),
+            ("@RestController", re.compile(r"@RestController\b")),
+            ("@Controller", re.compile(r"@Controller\b")),
+            ("@RequestMapping", re.compile(r"@RequestMapping\b")),
+            ("@*Mapping annotation", re.compile(r"@(?:Get|Post|Put|Delete|Patch)Mapping\b")),
+            ("@Configuration", re.compile(r"@Configuration\b")),
         ),
         source_extensions=(".java",),
     ),
 )
 
 
-# --------------------------------------------------------------------------
-# Evidence records
-# --------------------------------------------------------------------------
+# --- Evidence records ---
 
 @dataclass(frozen=True)
 class FrameworkSignal:
@@ -199,10 +220,8 @@ class FrameworkCandidate:
     signals: List[FrameworkSignal] = field(default_factory=list)
 
 
-# --------------------------------------------------------------------------
-# Manifest content parsing (lightweight - good enough for detection, not
-# a substitute for a real dependency resolver)
-# --------------------------------------------------------------------------
+# --- Manifest content parsing (lightweight - good enough for detection, not
+#     a substitute for a real dependency resolver) ---
 
 def _read_text_safe(absolute_path: str, max_bytes: int) -> str:
     try:
@@ -280,9 +299,7 @@ _MANIFEST_PARSERS = {
 }
 
 
-# --------------------------------------------------------------------------
-# Repository scan
-# --------------------------------------------------------------------------
+# --- Repository scan ---
 
 def _collect_tracked_filenames(definitions: Sequence[FrameworkDefinition]) -> Set[str]:
     """Every exact filename worth indexing during the walk: manifests plus
@@ -336,9 +353,7 @@ def _scan_repository(
     }
 
 
-# --------------------------------------------------------------------------
-# Per-framework evaluation
-# --------------------------------------------------------------------------
+# --- Per-framework evaluation ---
 
 def _evaluate_framework(
     definition: FrameworkDefinition,
@@ -477,7 +492,7 @@ def _classify_confidence(
     ambiguous = (
         second_score is not None
         and second_score > 0
-        and (top_score - second_score) < thresholds.ambiguous_score_gap
+        and (top_score - second_score) <= thresholds.ambiguous_score_gap
     )
 
     if top_score >= thresholds.high_min_score and not ambiguous:
@@ -525,9 +540,7 @@ def _candidate_to_dict(candidate: FrameworkCandidate) -> Dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------
-# Detector
-# --------------------------------------------------------------------------
+# --- Detector ---
 
 class FrameworkDetector:
     def __init__(

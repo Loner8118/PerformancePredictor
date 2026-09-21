@@ -1,0 +1,46 @@
+{
+  "created_at_utc": "2026-09-21T06:06:23+00:00",
+  "detection_warnings": [],
+  "docker_image": "performance-image",
+  "experiment_id": "EXP89293220",
+  "framework": null,
+  "load_test_config": {
+    "initial_repetitions": 1,
+    "initial_user_levels": [
+      20,
+      50,
+      100,
+      200,
+      300,
+      500
+    ],
+    "run_time": "15s",
+    "spawn_rate": 10,
+    "validation_repetitions": 1,
+    "validation_user_levels": [
+      600,
+      700,
+      800,
+      1000,
+      2000,
+      3000,
+      4000,
+      5000,
+      10000
+    ]
+  },
+  "machine_info": {
+    "cpu_count": 12,
+    "hostname": "LAPTOP-O3SNKFV4",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python_version": "3.11.0"
+  },
+  "software_versions": {
+    "docker": "Docker version 29.8.0, build 88096ef",
+    "locust": "locust 2.46.3 from C:\\project\\FYP\\PerformancePredictor\\venv\\Lib\\site-packages\\locust (Python 3.11.0)"
+  },
+  "target_commit": null,
+  "target_repository": "Performance-Testing-Demo",
+  "tool_commit": "d68bb709faebbf772abbca757cfa02cffdd54909",
+  "tool_repository_dirty": true
+}

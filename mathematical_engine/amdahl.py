@@ -195,6 +195,7 @@ class AmdahlAnalyzer:
             }
 
         per_resource: Dict[str, Any] = {}
+        notes: List[str] = []
         for name, info in resources.items():
             d_i = info.get("service_demand")
             if not isinstance(d_i, (int, float)):
@@ -202,7 +203,12 @@ class AmdahlAnalyzer:
 
             try:
                 p = calculate_resource_fraction(d_i, total_demand)
-            except AmdahlCalculationError:
+            except AmdahlCalculationError as exc:
+                # Shouldn't happen if bottleneck.py's total_service_demand
+                # is genuinely the sum of every resource's D_i - if it does,
+                # that's a real upstream data inconsistency worth a trace,
+                # not a silently-dropped resource.
+                notes.append(f"Resource '{name}' excluded from Amdahl analysis: {exc}")
                 continue
 
             max_speedup = calculate_max_speedup(p)
@@ -243,7 +249,15 @@ class AmdahlAnalyzer:
             reverse=True,
         )
 
-        notes: List[str] = []
+        sum_of_known_demands = sum(info["service_demand"] for info in per_resource.values())
+        if sum_of_known_demands > total_demand * (1 + 1e-6):
+            notes.append(
+                f"The sum of known per-resource service demands ({sum_of_known_demands:.6f}s/req) "
+                f"exceeds total_service_demand ({total_demand:.6f}s/req) reported by bottleneck.py - "
+                f"the fractions below are computed against the reported total regardless, but this "
+                f"inconsistency should be checked upstream."
+            )
+
         if len(per_resource) == 1:
             notes.append(
                 "Only one resource is monitored, so its fraction of total demand is trivially 1.0 "
@@ -292,3 +306,110 @@ def analyze_amdahl(
 ) -> Dict[str, Any]:
     """One-shot: construct an AmdahlAnalyzer and run analyze()."""
     return AmdahlAnalyzer(illustrative_speedups=illustrative_speedups).analyze(bottleneck_results)
+
+
+# --- USL / Amdahl theoretical consistency ---
+#
+# Gunther's Universal Scalability Law generalizes Amdahl's Law: setting
+# kappa=0 in USL's C(N) = N / (1 + sigma*(N-1) + kappa*N*(N-1)) leaves
+# C(N) = N / (1 + sigma*(N-1)), which is algebraically identical to
+# Amdahl's classical Speedup(N) = 1 / (f + (1-f)/N) with f = sigma (the
+# serial/contention fraction that never scales, regardless of N):
+#
+#     1 / (f + (1-f)/N)  =  N / (f*N + (1-f))  =  N / (1 + f*(N-1))
+#
+# Note this f is the COMPLEMENT of calculate_amdahl_speedup()'s own `p`
+# parameter above - that function's p is "the fraction being improved"
+# (the parallelizable part that DOES speed up), so f = 1 - p there. USL's
+# sigma plays the role of f directly (the part that never scales), which
+# is why the call below passes (1 - serial_fraction) as p, not
+# serial_fraction itself - passing it directly was an early mistake here,
+# caught by the numeric cross-check this function performs (they
+# disagreed until the sign was fixed - which is exactly why this checks
+# the actual formulas against each other instead of asserting they match).
+#
+# The function below doesn't just assert the algebra - it computes both
+# formulas independently (Amdahl's own closed form here, USL's actual
+# usl_capacity() from usl.py with kappa forced to 0) and checks they
+# agree numerically. That's what "verified" should mean, rather than
+# "the algebra works out on paper" - this also catches a real typo or
+# sign error in either formula, which is exactly what happened during
+# this function's own development.
+
+def verify_usl_amdahl_equivalence(
+    serial_fraction: float,
+    user_counts: Sequence[float],
+    tolerance: float = 1e-9,
+) -> Dict[str, Any]:
+    """
+    Confirms USL(kappa=0) and classical Amdahl's Law produce identical
+    speedup/capacity curves for the same serial_fraction (= USL's sigma).
+
+    Args:
+        serial_fraction: Amdahl's f / USL's sigma, 0 <= f <= 1. Call this
+            right after fitting a USL model with model.sigma and the
+            same user_levels the model was fit on, e.g.:
+                verify_usl_amdahl_equivalence(model.sigma, data["user_levels"])
+        user_counts: N values to compare the two formulas at.
+        tolerance: maximum allowed relative difference before flagging
+            disagreement - should only ever be hit by floating-point
+            noise, not a real mismatch, since both formulas reduce to
+            the same algebraic expression.
+
+    Raises:
+        AmdahlValidationError: bad serial_fraction, empty/invalid
+            user_counts, or usl.py's usl_capacity() isn't importable
+            (needs numpy/scipy - this check is optional/supplementary,
+            not required for the rest of this module).
+    """
+    if not (0.0 <= serial_fraction <= 1.0):
+        raise AmdahlValidationError("serial_fraction must be between 0 and 1.")
+    if not user_counts:
+        raise AmdahlValidationError("user_counts must not be empty.")
+
+    try:
+        from mathematical_engine.usl import usl_capacity
+    except ImportError as exc:
+        raise AmdahlValidationError(
+            "verify_usl_amdahl_equivalence() requires usl.py to be importable as "
+            "mathematical_engine.usl (and numpy/scipy installed) - this is a "
+            "theoretical cross-check, not required for the rest of this module."
+        ) from exc
+
+    amdahl_values: Dict[float, float] = {}
+    usl_values: Dict[float, float] = {}
+    max_relative_difference = 0.0
+
+    for n in user_counts:
+        if n <= 0:
+            raise AmdahlValidationError(f"user_counts must all be positive, got {n}.")
+
+        amdahl_speedup = calculate_amdahl_speedup(1.0 - serial_fraction, float(n))
+        usl_value = float(usl_capacity(float(n), sigma=serial_fraction, kappa=0.0))
+
+        amdahl_values[float(n)] = round(amdahl_speedup, 10)
+        usl_values[float(n)] = round(usl_value, 10)
+
+        if usl_value != 0:
+            relative_difference = abs(amdahl_speedup - usl_value) / usl_value
+            max_relative_difference = max(max_relative_difference, relative_difference)
+
+    relationship_confirmed = max_relative_difference <= tolerance
+
+    return {
+        "serial_fraction": serial_fraction,
+        "amdahl_classical": amdahl_values,
+        "usl_kappa_zero": usl_values,
+        "max_relative_difference": max_relative_difference,
+        "relationship_confirmed": relationship_confirmed,
+        "note": (
+            "USL's capacity function with kappa=0 and classical Amdahl's Law with f=sigma "
+            "agree to within floating-point precision across every tested N, confirming "
+            "USL is a generalization of Amdahl's Law (kappa adds a coherency/coordination "
+            "term Amdahl's original formulation doesn't have)."
+        ) if relationship_confirmed else (
+            f"USL(kappa=0) and Amdahl's Law diverge by up to {max_relative_difference:.2%} "
+            f"at the tested N values - this should not happen given both reduce to the same "
+            f"algebraic expression; check for a calculation error in one of the two formulas."
+        ),
+    }

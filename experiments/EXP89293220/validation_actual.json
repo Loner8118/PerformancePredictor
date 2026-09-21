@@ -1,0 +1,63 @@
+{
+  "levels": [
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 76.1573,
+      "actual_throughput": 191.6903,
+      "users": 600.0
+    },
+    {
+      "actual_error_rate": 10.7431,
+      "actual_response_time": 128.9244,
+      "actual_throughput": 163.3978,
+      "users": 700.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 482.6788,
+      "actual_throughput": 66.0803,
+      "users": 800.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 394.4997,
+      "actual_throughput": 75.6151,
+      "users": 1000.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 68.9094,
+      "actual_throughput": 193.5705,
+      "users": 2000.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 61.3742,
+      "actual_throughput": 202.8958,
+      "users": 3000.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 30.4975,
+      "actual_throughput": 225.4159,
+      "users": 4000.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 34.8581,
+      "actual_throughput": 224.1296,
+      "users": 5000.0
+    },
+    {
+      "actual_error_rate": 0.0,
+      "actual_response_time": 50.1705,
+      "actual_throughput": 213.4016,
+      "users": 10000.0
+    }
+  ],
+  "missing_targets": [],
+  "model_hash": "57b4a457d975d5bf186333239d414fd25a4c5e75e6433e395edaff4a0544d15a",
+  "phase": "B_validation_actuals",
+  "predictions_source": "C:\\project\\FYP\\PerformancePredictor\\experiments\\EXP89293220\\predictions.json",
+  "recorded_at_utc": "2026-09-21T06:09:03+00:00"
+}

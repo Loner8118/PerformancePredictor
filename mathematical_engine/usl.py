@@ -15,6 +15,33 @@ class USLFitError(RuntimeError):
     """curve_fit didn't converge."""
 
 
+# ==========================================================================
+# What this module does
+# ==========================================================================
+#
+# Fits Gunther's Universal Scalability Law - C(N) = N / (1 + sigma*(N-1)
+# + kappa*N*(N-1)) - to load-test throughput data, and reports not just
+# the fitted curve but how much that fit should actually be trusted for
+# extrapolation, which is the part that matters most once predictions
+# are being made several multiples past the highest tested load level.
+#
+# Confidence intervals (predict_with_confidence) come from Monte Carlo
+# sampling of curve_fit's parameter covariance matrix, NOT from naive
+# resampling bootstrap. That's a deliberate choice, not a shortcut:
+# load-testing experiments typically produce only 5-10 distinct load
+# levels, and resampling-with-replacement from that few points can
+# easily draw a resample missing enough distinct N values to even fit
+# 2-3 parameters, or duplicate a single point enough times to fit a
+# spurious "perfect" curve through it. Propagating the covariance matrix
+# through Monte Carlo sampling is the standard technique for small-N
+# nonlinear regression uncertainty and doesn't have that failure mode.
+#
+# Interpretation of these numbers (is this "good" scalability, what
+# should we recommend) is deliberately not this module's job - that
+# lives in scalability.py / recommendation.py. This file only answers
+# "what does the model say, and how much should you trust it."
+
+
 @dataclass
 class USLObservations:
     """Validated, sorted (N, throughput) pairs."""
@@ -237,6 +264,8 @@ class UniversalScalabilityModel:
             raise USLValidationError("Prediction user counts must be positive (N >= 1).")
         if not 0 < confidence_level < 1:
             raise USLValidationError("confidence_level must be between 0 and 1.")
+        if not isinstance(n_samples, int) or isinstance(n_samples, bool) or n_samples < 100:
+            raise USLValidationError("n_samples must be an integer >= 100 for a stable confidence interval.")
 
         point = usl_throughput(n_arr, self.baseline_throughput, self.sigma, self.kappa)
         no_interval = self._param_covariance is None
@@ -438,6 +467,17 @@ class UniversalScalabilityModel:
         # Leave one out for each fold, and still want >=2 residual degrees
         # of freedom in the held-out fit, or the fold's fit is just as
         # underdetermined as the fold it's supposed to validate.
+        #
+        # Edge case worth knowing about rather than hiding: if the full
+        # dataset includes a measured N=1 point, the one fold that holds
+        # THAT point out no longer has an N=1 observation, so it silently
+        # fits in 3-parameter "estimated baseline" mode instead of the
+        # parent model's 2-parameter "measured baseline" mode. That fold's
+        # score is still a valid held-out prediction, just not from a
+        # perfectly apples-to-apples model. In practice this pipeline's
+        # load levels rarely include N=1 at all (real experiments start
+        # at 20+ concurrent users), so baseline_source is almost always
+        # "estimated" for every fold uniformly and this doesn't come up.
         min_required = n_params + 3
 
         if n_obs < min_required:

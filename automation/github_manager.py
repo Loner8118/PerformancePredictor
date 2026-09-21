@@ -39,9 +39,7 @@ class GitHubManager:
         self.clone_timeout_seconds = clone_timeout_seconds
         os.makedirs(self.workspace, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # Validation
-    # ------------------------------------------------------------------
+    # --- Validation ---
 
     @classmethod
     def _validate_github_url(cls, github_url: Any) -> Dict[str, Optional[str]]:
@@ -131,9 +129,7 @@ class GitHubManager:
     def _is_valid_repo(path: str) -> bool:
         return os.path.isdir(path) and os.path.isdir(os.path.join(path, ".git"))
 
-    # ------------------------------------------------------------------
-    # Clone
-    # ------------------------------------------------------------------
+    # --- Clone ---
 
     def clone_repository(self, github_url: str, branch: Optional[str] = None, shallow: bool = True) -> Dict[str, Any]:
         """
@@ -239,9 +235,7 @@ class GitHubManager:
         meaningful = [line for line in lines if not line.lower().startswith("hint:")]
         return meaningful[-1] if meaningful else lines[-1]
 
-    # ------------------------------------------------------------------
-    # Delete
-    # ------------------------------------------------------------------
+    # --- Delete ---
 
     def delete_repository(self, project_name: str) -> bool:
         """Delete a cloned repository from the workspace."""
@@ -264,9 +258,7 @@ class GitHubManager:
         except Exception as e:
             raise RuntimeError(f"Failed to delete repository: {e}")
 
-    # ------------------------------------------------------------------
-    # Listing (for the frontend / pipeline to see what's already cloned)
-    # ------------------------------------------------------------------
+    # --- Listing (for the frontend / pipeline to see what's already cloned) ---
 
     def list_repositories(self) -> List[Dict[str, Any]]:
         """List valid repositories currently sitting in the workspace."""
@@ -295,9 +287,7 @@ class GitHubManager:
                     pass  # broken symlink or file removed mid-walk - skip it
         return total
 
-    # ------------------------------------------------------------------
-    # Filesystem helpers
-    # ------------------------------------------------------------------
+    # --- Filesystem helpers ---
 
     @staticmethod
     def _remove_directory(path: str) -> None:

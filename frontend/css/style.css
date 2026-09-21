@@ -2823,3 +2823,770 @@ html[data-theme="light"] .theme-toggle__icon--light { display: inline-flex; }
   }
 
 }
+
+/* ============================================================
+   METRIC CARDS
+   Compact stat tiles used inside panels (Forced Flow, Amdahl,
+   USL, capacity). Distinct from .stat-card, which is the larger
+   hero-level figure used in .stat-strip at the top of a view.
+   ============================================================ */
+
+.metric-grid--4 { grid-template-columns: repeat(4, 1fr); }
+.metric-grid--6 { grid-template-columns: repeat(6, 1fr); }
+
+.metric-card {
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.metric-card__label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: 0.01em;
+}
+
+.metric-card__value {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.metric-card__value.mono { font-size: 18px; }
+
+.metric-card small,
+.metric-card__meta,
+.metric-card__hint {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  line-height: 1.45;
+}
+
+.metric-card__hint { font-style: italic; }
+
+/* Measured vs. predicted, carried through the whole design system:
+   amber = measured, cyan = extrapolated. */
+.metric-card--measured .metric-card__value { color: var(--amber); }
+.metric-card--predicted .metric-card__value { color: var(--cyan); }
+
+
+/* ============================================================
+   SIGNAL ROWS
+   Flat name/meta rows inside .signal-list — lighter weight than
+   .signal-item, which carries an icon and a description block.
+   ============================================================ */
+
+.signal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-panel-raised);
+}
+
+.signal-row__name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  min-width: 0;
+  word-break: break-word;
+}
+
+.signal-row__meta {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+
+/* ============================================================
+   NOTE LIST ITEMS
+   .note-list styles its <li> children; these panels render <p>
+   elements instead, so they need the same treatment.
+   ============================================================ */
+
+.note-list__item {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  padding: 10px 12px;
+  background: var(--bg-panel-raised);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--line-strong);
+  line-height: 1.5;
+}
+
+
+/* ============================================================
+   SHARED UTILITIES
+   ============================================================ */
+
+.muted {
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* SLO table: the specific budget that was breached, so a FAIL row
+   shows WHICH of response time / error rate blew it. */
+.is-breach {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.table-unit {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-left: 3px;
+}
+
+.panel__subtitle,
+.panel__subtext {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  margin: 4px 0 0;
+}
+
+
+/* ============================================================
+   FORM CONTROLS — SELECT
+   <select> needs explicit appearance reset; it doesn't inherit
+   .field__input's styling on its own across browsers.
+   ============================================================ */
+
+select.field__input {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238B96A3' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+}
+
+select.field__input option {
+  background: var(--bg-panel);
+  color: var(--ink);
+}
+
+
+/* ============================================================
+   BADGE VARIANT
+   ============================================================ */
+
+.badge--warn {
+  background: var(--warning-wash);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+
+/* ============================================================
+   VALIDATION SUMMARY VARIANTS
+   ============================================================ */
+
+.validation-summary__item--status strong { color: var(--ink); }
+.validation-summary__item--error strong { color: var(--danger); }
+.validation-summary__item--warning strong { color: var(--warning); }
+
+
+/* ============================================================
+USL — UNIVERSAL SCALABILITY LAW
+============================================================ */
+
+.usl-status-panel,
+.usl-quality-panel,
+.usl-warning-panel {
+background: var(--bg-panel);
+border: 1px solid var(--line);
+border-radius: var(--radius-lg);
+padding: 18px;
+}
+
+/* ============================================================
+STATUS
+============================================================ */
+
+.usl-status-badges {
+display: flex;
+flex-wrap: wrap;
+gap: 8px;
+margin-bottom: 14px;
+}
+
+.usl-status-grid,
+.usl-summary-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+gap: 16px 20px;
+}
+
+.usl-status-item,
+.usl-summary-item {
+display: flex;
+flex-direction: column;
+gap: 4px;
+min-width: 0;
+}
+
+.usl-status-item__label,
+.usl-summary-item__label {
+font-size: 11px;
+color: var(--ink-muted);
+font-weight: 500;
+}
+
+.usl-status-item__value {
+font-family: var(--font-mono);
+font-size: 15px;
+font-weight: 600;
+color: var(--ink);
+word-break: break-word;
+}
+
+.usl-status-item__hint {
+font-size: 10.5px;
+color: var(--ink-faint);
+line-height: 1.45;
+}
+
+/* ============================================================
+CHART NOTE
+============================================================ */
+
+.usl-chart-note,
+.usl-model-note {
+margin: 0 0 14px;
+padding: 11px 13px;
+border: 1px solid var(--line);
+border-radius: var(--radius-md);
+background: var(--bg-panel-raised);
+color: var(--ink-muted);
+font-size: 11.5px;
+line-height: 1.55;
+}
+
+.usl-chart-note strong,
+.usl-model-note strong {
+color: var(--ink);
+}
+
+/* ============================================================
+ANALYSIS GRID
+============================================================ */
+
+.usl-analysis-grid {
+display: grid;
+grid-template-columns: 1.15fr 1fr;
+gap: 18px;
+align-items: start;
+}
+
+/* ============================================================
+FIT METRICS
+============================================================ */
+
+.fit-metrics {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+gap: 14px;
+}
+
+.fit-metric {
+display: flex;
+flex-direction: column;
+gap: 3px;
+min-width: 0;
+font-size: 11px;
+color: var(--ink-muted);
+}
+
+.fit-metric strong {
+font-family: var(--font-mono);
+font-size: 15px;
+font-weight: 600;
+color: var(--ink);
+}
+
+.fit-metric small {
+color: var(--ink-faint);
+font-size: 10px;
+line-height: 1.4;
+}
+
+.usl-fit-summary {
+display: flex;
+flex-wrap: wrap;
+gap: 8px 22px;
+padding-top: 14px;
+margin-top: 14px;
+border-top: 1px solid var(--line);
+color: var(--ink-muted);
+font-size: 11.5px;
+line-height: 1.5;
+}
+
+.usl-fit-summary strong {
+color: var(--ink);
+}
+
+/* ============================================================
+CLASSIFICATION
+============================================================ */
+
+.classification-box {
+padding: 14px 16px;
+border-radius: var(--radius-md);
+border: 1px solid var(--line);
+background: var(--bg-panel-raised);
+font-size: 12.5px;
+color: var(--ink-muted);
+line-height: 1.6;
+}
+
+.classification-box .badge {
+margin-bottom: 8px;
+}
+
+.classification-box p {
+margin: 0;
+}
+
+/* ============================================================
+INTERPRETATION
+============================================================ */
+
+.interpretation-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+gap: 14px;
+}
+
+.interpretation-card {
+display: flex;
+align-items: flex-start;
+gap: 12px;
+padding: 14px 15px;
+background: var(--bg-panel-raised);
+border: 1px solid var(--line);
+border-radius: var(--radius-md);
+font-size: 12.5px;
+color: var(--ink-muted);
+line-height: 1.55;
+}
+
+.interpretation-card strong {
+display: block;
+color: var(--ink);
+font-size: 13px;
+margin-bottom: 3px;
+}
+
+.interpretation-card p {
+margin: 0;
+}
+
+.interpretation-card__symbol {
+flex: 0 0 30px;
+height: 30px;
+display: grid;
+place-items: center;
+border-radius: var(--radius-sm);
+background: var(--amber-wash);
+border: 1px solid var(--amber-dim);
+color: var(--amber);
+font-family: var(--font-mono);
+font-size: 13px;
+font-weight: 600;
+}
+
+/* ============================================================
+UNCERTAINTY
+============================================================ */
+
+.usl-note {
+margin-top: 13px;
+padding-top: 12px;
+border-top: 1px solid var(--line);
+font-size: 11.5px;
+color: var(--ink-faint);
+line-height: 1.55;
+}
+
+/* ============================================================
+EXTRAPOLATION WARNING
+============================================================ */
+
+.usl-warning-panel {
+border-color: var(--warning);
+background: var(--warning-wash);
+}
+
+.usl-warning {
+display: flex;
+align-items: flex-start;
+gap: 10px;
+font-size: 12.5px;
+color: var(--warning);
+line-height: 1.55;
+}
+
+.usl-warning h3 {
+margin: 0 0 4px;
+color: var(--ink);
+font-size: 14px;
+}
+
+.usl-warning p {
+margin: 0;
+}
+
+.usl-warning__icon {
+flex: 0 0 auto;
+width: 22px;
+height: 22px;
+display: grid;
+place-items: center;
+border: 1px solid currentColor;
+border-radius: 50%;
+font-size: 12px;
+font-weight: 700;
+}
+
+/* ============================================================
+RESPONSIVE
+============================================================ */
+
+@media (max-width: 900px) {
+
+.usl-analysis-grid {
+grid-template-columns: 1fr;
+}
+
+}
+
+@media (max-width: 640px) {
+
+.usl-status-grid,
+.usl-summary-grid {
+grid-template-columns: 1fr 1fr;
+}
+
+.interpretation-grid {
+grid-template-columns: 1fr;
+}
+
+}
+
+@media (max-width: 460px) {
+
+.usl-status-grid,
+.usl-summary-grid {
+grid-template-columns: 1fr;
+}
+
+}
+
+
+
+/* ============================================================
+   INTERPRETATION CARDS
+   ============================================================ */
+
+.interpretation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.interpretation-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 15px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.interpretation-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+
+.interpretation-card__symbol {
+  flex: 0 0 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--amber-wash);
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.classification-box {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--bg-panel-raised);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.classification-box strong { color: var(--ink); }
+
+
+/* ============================================================
+   RECOMMENDATIONS
+   ============================================================ */
+
+.rec-decision-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.rec-summary-chip--critical {
+  background: var(--danger-wash);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.rec-summary-chip--high {
+  background: var(--warning-wash);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.rec-summary-chip--medium {
+  background: var(--amber-wash);
+  color: var(--amber);
+  border-color: var(--amber-dim);
+}
+
+.rec-summary-chip--low {
+  background: var(--bg-panel-raised);
+  color: var(--ink-faint);
+  border-color: var(--line-strong);
+}
+
+
+/* ============================================================
+   REPOSITORY PANELS
+   ============================================================ */
+
+.repo-identity-panel,
+.repo-framework-panel,
+.playground-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+
+.repo-url {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cyan);
+  word-break: break-all;
+}
+
+.entry-point-card__row--command {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+
+/* ============================================================
+   MISC
+   ============================================================ */
+
+.hero__eyebrow-free {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.legend-swatch--warning { background: var(--warning); }
+
+.run-status__text {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.load-progress {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-input);
+  overflow: hidden;
+  position: relative;
+}
+
+.load-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, var(--amber-dim), var(--amber));
+  transition: width var(--dur-slow) var(--ease);
+}
+
+.theme-toggle__icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 1100px) {
+  .usl-analysis-grid { grid-template-columns: 1fr; }
+  .metric-grid--6 { grid-template-columns: repeat(3, 1fr); }
+  .metric-grid--4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .metric-grid--4,
+  .metric-grid--6 { grid-template-columns: repeat(2, 1fr); }
+
+  .usl-status-grid,
+  .usl-summary-grid { grid-template-columns: 1fr 1fr; }
+
+  .signal-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .signal-row__meta { text-align: left; }
+}
+
+@media (max-width: 520px) {
+  .metric-grid--4,
+  .metric-grid--6,
+  .usl-status-grid,
+  .usl-summary-grid,
+  .fit-metrics { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   FORCED FLOW
+   Component-level service-demand presentation.
+   ============================================================ */
+
+/* Forced Flow summary row */
+.forced-flow-summary {
+  margin-top: 2px;
+}
+
+/* Four compact Forced Flow metrics */
+.metric-grid--forced-flow {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Dominant component value */
+.metric-card--dominant .metric-card__value {
+  color: var(--cyan);
+  text-transform: none;
+}
+
+/* Forced Flow availability state */
+.metric-card--available .metric-card__value {
+  color: var(--green);
+}
+
+.metric-card--unavailable .metric-card__value {
+  color: var(--ink-muted);
+}
+
+/* Component table */
+#forcedFlowTable {
+  width: 100%;
+}
+
+#forcedFlowTable th,
+#forcedFlowTable td {
+  vertical-align: middle;
+}
+
+/* Component name */
+.forced-flow-component {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Small secondary information inside comparison cells */
+.forced-flow-comparison {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.forced-flow-comparison__detail {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  line-height: 1.4;
+}
+
+/* Service demand emphasis */
+.forced-flow-demand {
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* Empty/unavailable state */
+.forced-flow-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+/* Notes */
+#forcedFlowNotes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* Responsive */
+@media (max-width: 1000px) {
+  .metric-grid--forced-flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .metric-grid--forced-flow {
+    grid-template-columns: 1fr;
+  }
+}

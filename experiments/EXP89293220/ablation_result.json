@@ -1,0 +1,134 @@
+{
+  "configurations": [
+    {
+      "bottleneck": "cpu_usage",
+      "bottleneck_correct": null,
+      "config": "A_runtime_only",
+      "description": "Raw runtime metrics only - linear extrapolation of the highest observed resource %, no modeling.",
+      "prediction_error_percent": 64.65,
+      "safe_users": 987.91
+    },
+    {
+      "bottleneck": "cpu_usage",
+      "bottleneck_correct": null,
+      "config": "B_plus_queueing",
+      "description": "Config A plus Little's Law / queueing-theoretic capacity reasoning (utilization-based extrapolation).",
+      "prediction_error_percent": null,
+      "safe_users": null
+    },
+    {
+      "bottleneck": "cpu",
+      "bottleneck_correct": null,
+      "config": "C_full_analytical",
+      "description": "Full pipeline: USL-fitted capacity reference + queueing + Utilization Law bottleneck + Amdahl cross-check.",
+      "prediction_error_percent": 64.72,
+      "safe_users": 211.69
+    },
+    {
+      "bottleneck": "cpu",
+      "bottleneck_correct": null,
+      "config": "D_plus_forced_flow",
+      "description": "Config C, with bottleneck.py's resources also including component-level (DB/cache/API) demand via Forced Flow.",
+      "prediction_error_percent": 64.72,
+      "safe_users": 211.69
+    }
+  ],
+  "ground_truth": {
+    "actual_bottleneck": null,
+    "actual_safe_capacity": 600.0,
+    "slo_result": {
+      "evaluations": [
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.07615730000000001,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 600.0
+        },
+        {
+          "error_rate_ok": false,
+          "error_rate_percent": 10.7431,
+          "passed": false,
+          "response_time": 0.1289244,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 700.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.4826788,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 800.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.3944997,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 1000.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.06890940000000001,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 2000.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.061374200000000004,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 3000.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.0304975,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 4000.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.0348581,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 5000.0
+        },
+        {
+          "error_rate_ok": true,
+          "error_rate_percent": 0.0,
+          "passed": true,
+          "response_time": 0.0501705,
+          "response_time_ok": true,
+          "source": "observed",
+          "users": 10000.0
+        }
+      ],
+      "first_failure_observed_at": 700.0,
+      "first_failure_overall_at": 700.0,
+      "notes": [],
+      "slo_capacity_observed": 600.0,
+      "slo_capacity_overall": 600.0,
+      "thresholds": {
+        "max_error_rate_percent": 1.0,
+        "max_response_time_seconds": 0.5
+      }
+    }
+  }
+}

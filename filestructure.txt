@@ -1,4 +1,6 @@
 automation/
+├─ application_descriptor.py
+├─ dependency_detector.py
 ├─ docker_manager.py
 ├─ entry_point_locator.py
 ├─ framework_detector.py
@@ -9,22 +11,31 @@ automation/
 ├─ metrics_collector.py
 ├─ route_discovery.py
 └─ validator.py
+
 metrics/
 ├─ csv_parser.py
+├─ db_monitor.py
 └─ runtime_monitor.py
 
 mathematical_engine/
+├─ amdahl.py
 ├─ bottleneck.py
 ├─ capacity.py
+├─ forced_flow.py
 ├─ little_law.py
 ├─ queueing.py
 ├─ recommendation.py
 ├─ scalability.py
+├─ slo.py
 └─ usl.py
 
-frontend/
-├─ css/
-│  └─ style.css
-├─ js/
-│  └─ app.js
-└─ index.html
+validation/
+├─ ablation.py
+├─ experiment_manager.py
+├─ model_validation.py
+├─ prediction_validation.py
+├─ report.py
+└─ statistics.py
+
+
+

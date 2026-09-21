@@ -1,0 +1,647 @@
+{
+  "experiment_id": "EXP89293220",
+  "frozen_at_utc": "2026-09-21T06:06:23+00:00",
+  "frozen_inputs": {
+    "amdahl_results": {
+      "available": true,
+      "bottleneck_analysis": {
+        "fraction_of_total_demand": 0.9735,
+        "illustrative_speedups": {
+          "10x": 8.0757,
+          "2x": 1.9484,
+          "5x": 4.5212
+        },
+        "implied_max_throughput": 8161.54,
+        "max_theoretical_speedup": 37.7692,
+        "max_theoretical_speedup_unbounded": false,
+        "next_bottleneck_after_optimization": {
+          "resource": "network",
+          "service_demand": 5.414420684752991e-05
+        },
+        "resource": "cpu",
+        "service_demand": 0.0019908408363937926
+      },
+      "bottleneck_resource": "cpu",
+      "current_throughput": 216.0896,
+      "notes": [
+        "Even with cpu optimized to be infinitely fast, network would become the new limiting factor (service demand 0.000054s/req) - the computed ceiling for cpu assumes every OTHER resource's demand stays fixed, which stops being true once cpu is no longer the constraint."
+      ],
+      "per_resource": {
+        "cpu": {
+          "fraction_of_total_demand": 0.9735,
+          "illustrative_speedups": {
+            "10x": 8.0757,
+            "2x": 1.9484,
+            "5x": 4.5212
+          },
+          "implied_max_throughput": 8161.54,
+          "max_theoretical_speedup": 37.7692,
+          "max_theoretical_speedup_unbounded": false,
+          "resource": "cpu",
+          "service_demand": 0.0019908408363937926
+        },
+        "disk": {
+          "fraction_of_total_demand": 0.0,
+          "illustrative_speedups": {
+            "10x": 1.0,
+            "2x": 1.0,
+            "5x": 1.0
+          },
+          "implied_max_throughput": 216.09,
+          "max_theoretical_speedup": 1.0,
+          "max_theoretical_speedup_unbounded": false,
+          "resource": "disk",
+          "service_demand": 0.0
+        },
+        "network": {
+          "fraction_of_total_demand": 0.0265,
+          "illustrative_speedups": {
+            "10x": 1.0244,
+            "2x": 1.0134,
+            "5x": 1.0216
+          },
+          "implied_max_throughput": 221.97,
+          "max_theoretical_speedup": 1.0272,
+          "max_theoretical_speedup_unbounded": false,
+          "resource": "network",
+          "service_demand": 5.414420684752991e-05
+        }
+      },
+      "ranked_resources": [
+        "cpu",
+        "network",
+        "disk"
+      ],
+      "total_service_demand": 0.0020449850432413224
+    },
+    "bottleneck_results": {
+      "asymptotic_bounds": {
+        "asymptotic_throughput_bound": 502.30032543003244,
+        "binding_constraint": "bottleneck_resource",
+        "bottleneck_throughput_bound": 502.30032543003244,
+        "concurrency_throughput_bound": 244500.5657388549,
+        "optimal_concurrency_n_star": 1.0271966527196652
+      },
+      "bottleneck": {
+        "note": "This is the bottleneck among monitored resources (cpu, disk, network) only - any other resource not listed here cannot be identified as the bottleneck.",
+        "resource": "cpu",
+        "service_demand": 0.0019908408363937926
+      },
+      "bottleneck_severity": "Substantial headroom",
+      "current_users": 500.0,
+      "metadata": {},
+      "model": "Utilization Law / Bottleneck Analysis / Asymptotic Bounds",
+      "observed_vs_bound": {
+        "asymptotic_bound": 502.30032543003244,
+        "exceeds_bound": false,
+        "observed_throughput": 216.0896,
+        "ratio_of_bound": 0.4302000000000001
+      },
+      "queue_cross_check": null,
+      "resources": {
+        "cpu": {
+          "exceeds_configured_capacity": false,
+          "is_approximate": false,
+          "raw_utilization": 0.4302,
+          "service_demand": 0.0019908408363937926,
+          "source": "utilization_law",
+          "utilization": 0.4302
+        },
+        "disk": {
+          "exceeds_configured_capacity": false,
+          "is_approximate": true,
+          "raw_utilization": 0.0,
+          "service_demand": 0.0,
+          "source": "utilization_law",
+          "utilization": 0.0
+        },
+        "network": {
+          "exceeds_configured_capacity": false,
+          "is_approximate": true,
+          "raw_utilization": 0.011699999999999999,
+          "service_demand": 5.414420684752991e-05,
+          "source": "utilization_law",
+          "utilization": 0.011699999999999999
+        }
+      },
+      "signals": {
+        "clear_dominant_bottleneck": true,
+        "exceeds_theoretical_ceiling": false,
+        "near_theoretical_ceiling": false,
+        "resource_exceeds_configured_capacity": false
+      },
+      "think_time": 0.0,
+      "throughput": 216.0896,
+      "total_service_demand": 0.0020449850432413224,
+      "units": {
+        "asymptotic_throughput_bound": "requests/sec",
+        "bottleneck_throughput_bound": "requests/sec",
+        "concurrency_throughput_bound": "requests/sec",
+        "optimal_concurrency_n_star": "users",
+        "service_demand": "seconds/request",
+        "think_time": "seconds",
+        "throughput": "requests/sec",
+        "total_service_demand": "seconds/request"
+      }
+    },
+    "capacity_results": {
+      "calculations": {
+        "arrival_rate": 216.09,
+        "breaking_point": 264.61,
+        "capacity_margin": 0.0,
+        "capacity_reference_users": 264.6092957130662,
+        "disk_io_limit_mbps": 100.0,
+        "little_law_consistency": {
+          "consistent": true,
+          "difference_percent": 0.0
+        },
+        "network_io_limit_mbps": 100.0,
+        "p95_response_time_threshold_ms": 1000.0,
+        "remaining_capacity": 0.0,
+        "request_pressure": 0.95,
+        "safe_users": 211.69,
+        "safety_margin_ratio_used": 0.8,
+        "throughput_capacity_used_percent": 95.21,
+        "user_capacity_used_percent": 188.96,
+        "usl_user_capacity_used_percent": 188.96
+      },
+      "health_summary": {
+        "main_risk": "Queue",
+        "overall_status": "Critical",
+        "recommended_scaling": "horizontal"
+      },
+      "inputs": {
+        "bottleneck": {
+          "asymptotic_bounds": {
+            "asymptotic_throughput_bound": 502.30032543003244,
+            "binding_constraint": "bottleneck_resource",
+            "bottleneck_throughput_bound": 502.30032543003244,
+            "concurrency_throughput_bound": 244500.5657388549,
+            "optimal_concurrency_n_star": 1.0271966527196652
+          },
+          "bottleneck": {
+            "note": "This is the bottleneck among monitored resources (cpu, disk, network) only - any other resource not listed here cannot be identified as the bottleneck.",
+            "resource": "cpu",
+            "service_demand": 0.0019908408363937926
+          },
+          "bottleneck_severity": "Substantial headroom",
+          "current_users": 500.0,
+          "metadata": {},
+          "model": "Utilization Law / Bottleneck Analysis / Asymptotic Bounds",
+          "observed_vs_bound": {
+            "asymptotic_bound": 502.30032543003244,
+            "exceeds_bound": false,
+            "observed_throughput": 216.0896,
+            "ratio_of_bound": 0.4302000000000001
+          },
+          "queue_cross_check": null,
+          "resources": {
+            "cpu": {
+              "exceeds_configured_capacity": false,
+              "is_approximate": false,
+              "raw_utilization": 0.4302,
+              "service_demand": 0.0019908408363937926,
+              "source": "utilization_law",
+              "utilization": 0.4302
+            },
+            "disk": {
+              "exceeds_configured_capacity": false,
+              "is_approximate": true,
+              "raw_utilization": 0.0,
+              "service_demand": 0.0,
+              "source": "utilization_law",
+              "utilization": 0.0
+            },
+            "network": {
+              "exceeds_configured_capacity": false,
+              "is_approximate": true,
+              "raw_utilization": 0.011699999999999999,
+              "service_demand": 5.414420684752991e-05,
+              "source": "utilization_law",
+              "utilization": 0.011699999999999999
+            }
+          },
+          "signals": {
+            "clear_dominant_bottleneck": true,
+            "exceeds_theoretical_ceiling": false,
+            "near_theoretical_ceiling": false,
+            "resource_exceeds_configured_capacity": false
+          },
+          "think_time": 0.0,
+          "throughput": 216.0896,
+          "total_service_demand": 0.0020449850432413224,
+          "units": {
+            "asymptotic_throughput_bound": "requests/sec",
+            "bottleneck_throughput_bound": "requests/sec",
+            "concurrency_throughput_bound": "requests/sec",
+            "optimal_concurrency_n_star": "users",
+            "service_demand": "seconds/request",
+            "think_time": "seconds",
+            "throughput": "requests/sec",
+            "total_service_demand": "seconds/request"
+          }
+        },
+        "little_law": {
+          "requests_in_system": 10.24320887296,
+          "time_in_system": 0.0474026
+        },
+        "queueing": {
+          "queue_length": 65.74003453908655,
+          "stability": "Near Saturation",
+          "utilization": 0.9849573681182989,
+          "waiting_time": 0.3042258143801763
+        },
+        "runtime": {
+          "cpu_usage": 43.02,
+          "current_users": 500.0,
+          "disk_io": 0.0,
+          "error_rate": 0.0,
+          "memory_usage": 0.37,
+          "network_io": 1.17,
+          "response_time": 47.4026,
+          "throughput": 216.0896
+        },
+        "usl": {
+          "observed_max_users": 500,
+          "observed_min_users": 20,
+          "optimal_users": 264.6092957130662,
+          "peak_throughput": 226.9575209854232,
+          "prediction_reliability": {
+            "kappa_relative_uncertainty": 0.32057648297478936,
+            "loo_cv": {
+              "available": true,
+              "folds_failed": 0,
+              "folds_used": 6,
+              "loo_r2": 0.8461504624529904
+            },
+            "notes": [],
+            "peak_observed_in_tested_range": true,
+            "r2": 0.976604400569754,
+            "saturation_point_reliable": true,
+            "status": "moderate",
+            "usable_for_extrapolation": true
+          },
+          "saturation_point": 159.22961480740372,
+          "scalability_efficiency": 1.0
+        }
+      },
+      "results": {
+        "asymptotic_throughput_bound": 502.30032543003244,
+        "bottleneck_resource": "cpu",
+        "bottleneck_service_demand": 0.0019908408363937926,
+        "bottleneck_severity": "Substantial headroom",
+        "breaking_point": 264.61,
+        "capacity_classification": "Critical",
+        "capacity_margin": 0.0,
+        "capacity_reference_reason": "USL theoretical optimal capacity",
+        "capacity_reference_users": 264.6092957130662,
+        "current_cpu_usage": 43.02,
+        "current_error_rate": 0.0,
+        "current_memory_usage": 0.37,
+        "current_response_time": 47.4026,
+        "current_throughput": 216.0896,
+        "current_users": 500.0,
+        "estimated_cpu_capacity_multiplier": 1.0,
+        "estimated_memory_capacity_multiplier": 1.0,
+        "extrapolation_reliable": true,
+        "growth_potential_users": 0.0,
+        "little_law_consistency": {
+          "consistent": true,
+          "difference_percent": 0.0
+        },
+        "observed_max_users": 500,
+        "observed_min_users": 20,
+        "optimal_concurrency_n_star": 1.0271966527196652,
+        "prediction_confidence": "moderate",
+        "queue_length": 65.74003453908655,
+        "queue_stability": "Near Saturation",
+        "queue_utilization": 0.9849573681182989,
+        "queue_waiting_time": 0.3042258143801763,
+        "request_pressure": 0.95,
+        "resource_pressure": {
+          "cpu": "Low",
+          "disk": "Low",
+          "memory": "Low",
+          "network": "Low",
+          "queue": "Critical"
+        },
+        "safe_users": 211.69,
+        "scalability_efficiency": 1.0,
+        "scalability_status": "Limited",
+        "tested_user_range": "20 \u2013 500",
+        "throughput_capacity_used_percent": 95.21,
+        "throughput_exceeds_asymptotic_bound": false,
+        "user_capacity_used_percent": 188.96,
+        "usl_optimal_users": 264.6092957130662,
+        "usl_peak_throughput": 226.9575209854232,
+        "usl_saturation_point": 159.22961480740372,
+        "usl_user_capacity_used_percent": 188.96
+      },
+      "signals": {
+        "bottleneck_data_available": true,
+        "capacity_available": false,
+        "capacity_exceeded": true,
+        "capacity_low": false,
+        "capacity_nearly_full": false,
+        "cpu_pressure": false,
+        "disk_pressure": false,
+        "exceeds_theoretical_ceiling": false,
+        "horizontal_scaling_candidate": true,
+        "memory_pressure": false,
+        "near_theoretical_ceiling": false,
+        "network_pressure": false,
+        "queue_pressure": true,
+        "resource_bottleneck": true,
+        "safe_capacity_exceeded": true,
+        "throughput_capacity_exceeded": false,
+        "vertical_scaling_candidate": false
+      }
+    },
+    "prediction_targets": [
+      600.0,
+      700.0,
+      800.0,
+      1000.0,
+      2000.0,
+      3000.0,
+      4000.0,
+      5000.0,
+      10000.0
+    ],
+    "runtime_metrics": {
+      "cpu_usage": 43.02,
+      "current_users": 500.0,
+      "disk_io": 0.0,
+      "error_rate": 0.0,
+      "memory_usage": 0.37,
+      "network_io": 1.17,
+      "response_time": 47.4026,
+      "throughput": 216.0896
+    },
+    "usl_results": {
+      "baseline_throughput": 4.1756275106839515,
+      "fit_quality": {
+        "observations": 6,
+        "r2": 0.976604400569754,
+        "residuals": {
+          "20.0": -13.87731110843989,
+          "50.0": 3.4438481885208034,
+          "100.0": 11.857071680051263,
+          "200.0": -3.9881010100774574,
+          "300.0": -10.115336447549907,
+          "500.0": 6.928256710031917
+        },
+        "rmse": 9.23088768687042
+      },
+      "kappa": 1.412582657574607e-05,
+      "optimal_users": 264.6092957130662,
+      "peak_throughput": 226.9575209854232,
+      "prediction_reliability": {
+        "kappa_relative_uncertainty": 0.32057648297478936,
+        "loo_cv": {
+          "available": true,
+          "folds_failed": 0,
+          "folds_used": 6,
+          "loo_r2": 0.8461504624529904
+        },
+        "notes": [],
+        "peak_observed_in_tested_range": true,
+        "r2": 0.976604400569754,
+        "saturation_point_reliable": true,
+        "status": "moderate",
+        "usable_for_extrapolation": true
+      },
+      "saturation_point": 159.22961480740372,
+      "sigma": 0.010936753542870478
+    }
+  },
+  "model_hash": "57b4a457d975d5bf186333239d414fd25a4c5e75e6433e395edaff4a0544d15a",
+  "phase": "A_frozen_prediction",
+  "prediction_result": {
+    "predictions": [
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 198.4,
+        "capacity_utilization": 283.43,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 39.5,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 13.84,
+        "predicted_memory": 0.44,
+        "predicted_network_io": 1.07,
+        "predicted_response_time": 243.23,
+        "predicted_throughput": 198.4,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.08,
+        "users": 600.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 187.89,
+        "capacity_utilization": 330.67,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 37.41,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 16.98,
+        "predicted_memory": 0.52,
+        "predicted_network_io": 1.02,
+        "predicted_response_time": 338.97,
+        "predicted_throughput": 187.89,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.06,
+        "users": 700.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 177.99,
+        "capacity_utilization": 377.91,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 35.44,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 20.12,
+        "predicted_memory": 0.59,
+        "predicted_network_io": 0.96,
+        "predicted_response_time": 451.49,
+        "predicted_throughput": 177.99,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.05,
+        "users": 800.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 160.37,
+        "capacity_utilization": 472.39,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 31.93,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 26.4,
+        "predicted_memory": 0.74,
+        "predicted_network_io": 0.87,
+        "predicted_response_time": 726.9,
+        "predicted_throughput": 160.37,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.04,
+        "users": 1000.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 105.26,
+        "capacity_utilization": 944.78,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 20.96,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 57.8,
+        "predicted_memory": 1.48,
+        "predicted_network_io": 0.57,
+        "predicted_response_time": 3111.02,
+        "predicted_throughput": 105.26,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.01,
+        "users": 2000.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 77.86,
+        "capacity_utilization": 1417.17,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 15.5,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 89.2,
+        "predicted_memory": 2.22,
+        "predicted_network_io": 0.42,
+        "predicted_response_time": 4740.26,
+        "predicted_throughput": 77.86,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.01,
+        "users": 3000.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 61.7,
+        "capacity_utilization": 1889.56,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 12.28,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 100.0,
+        "predicted_memory": 2.96,
+        "predicted_network_io": 0.33,
+        "predicted_response_time": 4740.26,
+        "predicted_throughput": 61.7,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.0,
+        "users": 4000.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 51.08,
+        "capacity_utilization": 2361.94,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 10.17,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 100.0,
+        "predicted_memory": 3.7,
+        "predicted_network_io": 0.28,
+        "predicted_response_time": 4740.26,
+        "predicted_throughput": 51.08,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.0,
+        "users": 5000.0,
+        "validation": null
+      },
+      {
+        "amdahl_max_throughput_ceiling": 8161.54,
+        "asymptotic_throughput_bound": 502.3,
+        "bound_binding_constraint": "bottleneck_resource",
+        "bounded_predicted_throughput": 27.42,
+        "capacity_utilization": 4723.89,
+        "classification": "Collapsed",
+        "exceeds_amdahl_ceiling": false,
+        "exceeds_asymptotic_bound": false,
+        "predicted_cpu": 5.46,
+        "predicted_disk_io": 0.0,
+        "predicted_error_rate": 100.0,
+        "predicted_memory": 7.4,
+        "predicted_network_io": 0.15,
+        "predicted_response_time": 4740.26,
+        "predicted_throughput": 27.42,
+        "saturation_risk": "Critical",
+        "scalability_efficiency": 0.0,
+        "users": 10000.0,
+        "validation": null
+      }
+    ],
+    "summary": {
+      "amdahl_ceiling_available": true,
+      "bottleneck_bound_available": true,
+      "first_amdahl_ceiling_exceeded_point": null,
+      "first_bound_exceeded_point": null,
+      "first_collapsed_point": 600.0,
+      "first_overloaded_point": null,
+      "highest_cpu": 39.5,
+      "highest_disk_io": 0.0,
+      "highest_memory": 7.4,
+      "highest_network_io": 1.07,
+      "highest_response_time": 4740.26,
+      "maximum_predicted_users": 10000.0,
+      "recommended_max_users": 211.69,
+      "safe_prediction_limit": 211.69,
+      "validation_summary": {
+        "consistent_count": 0,
+        "mae": null,
+        "mape_percent": null,
+        "rmse": null,
+        "validated_count": 0
+      }
+    }
+  },
+  "prediction_targets": [
+    600.0,
+    700.0,
+    800.0,
+    1000.0,
+    2000.0,
+    3000.0,
+    4000.0,
+    5000.0,
+    10000.0
+  ]
+}

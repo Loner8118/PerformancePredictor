@@ -13,9 +13,7 @@ class LittleLawCalculationError(RuntimeError):
     """A Little's Law calculation couldn't be performed (e.g. div by zero)."""
 
 
-# --------------------------------------------------------------------------
-# Unit conversion
-# --------------------------------------------------------------------------
+# --- Unit conversion ---
 
 _TIME_UNIT_TO_SECONDS: Dict[str, float] = {
     "s": 1.0,
@@ -38,9 +36,7 @@ def _convert_to_seconds(value: float, unit: str) -> float:
     return value * _TIME_UNIT_TO_SECONDS[normalized_unit]
 
 
-# --------------------------------------------------------------------------
-# Validated workload container
-# --------------------------------------------------------------------------
+# --- Validated workload container ---
 
 @dataclass(frozen=True)
 class Workload:
@@ -159,9 +155,7 @@ class Workload:
         )
 
 
-# --------------------------------------------------------------------------
-# Core Little's Law math (pure functions, no state)
-# --------------------------------------------------------------------------
+# --- Core Little's Law math (pure functions, no state) ---
 
 def calculate_requests(arrival_rate: float, response_time: float) -> float:
     """L = lambda * W"""
@@ -210,9 +204,7 @@ def calculate_waiting_time(response_time: float, service_time: float) -> float:
     return max(0.0, response_time - service_time)
 
 
-# --------------------------------------------------------------------------
-# Sample-confidence diagnostic (short observation windows)
-# --------------------------------------------------------------------------
+# --- Sample-confidence diagnostic (short observation windows) ---
 
 def estimate_renewal_cycles(observation_window: float, response_time: float) -> float:
     """
@@ -289,9 +281,7 @@ def _generate_measurement_confidence(
     }
 
 
-# --------------------------------------------------------------------------
-# Consistency comparison (Locust concurrency vs. calculated L)
-# --------------------------------------------------------------------------
+# --- Consistency comparison (Locust concurrency vs. calculated L) ---
 
 def compare_concurrency(
     calculated_l: float,
@@ -339,9 +329,7 @@ def compare_concurrency(
     }
 
 
-# --------------------------------------------------------------------------
-# Load classification
-# --------------------------------------------------------------------------
+# --- Load classification ---
 
 @dataclass
 class LoadClassificationThresholds:
@@ -395,9 +383,7 @@ def classify_load(
         return "Very High"
     return "Critical"
 
-# --------------------------------------------------------------------------
-# Signals (indicators only - no recommendations generated here)
-# --------------------------------------------------------------------------
+# --- Signals (indicators only - no recommendations generated here) ---
 
 def _generate_signals(
     requests_in_system: float,
@@ -459,9 +445,7 @@ def _generate_summary(requests_in_system: float) -> str:
     return f"Average of {rounded} requests are expected to be inside the system simultaneously."
 
 
-# --------------------------------------------------------------------------
-# Analyzer
-# --------------------------------------------------------------------------
+# --- Analyzer ---
 
 class LittleLawAnalyzer:
     """
@@ -479,8 +463,20 @@ class LittleLawAnalyzer:
         thresholds: Optional[LoadClassificationThresholds] = None,
         concurrency_tolerance: float = 0.30,
     ) -> None:
+        if thresholds is not None and not isinstance(thresholds, LoadClassificationThresholds):
+            raise LittleLawValidationError(
+                f"thresholds must be a LoadClassificationThresholds instance, got {type(thresholds).__name__}."
+            )
+        if (
+            not isinstance(concurrency_tolerance, (int, float))
+            or isinstance(concurrency_tolerance, bool)
+            or not math.isfinite(concurrency_tolerance)
+            or concurrency_tolerance <= 0
+        ):
+            raise LittleLawValidationError("concurrency_tolerance must be a positive finite number.")
+
         self.thresholds = thresholds or LoadClassificationThresholds()
-        self.concurrency_tolerance = concurrency_tolerance
+        self.concurrency_tolerance = float(concurrency_tolerance)
 
     def analyze(self, data: Dict[str, Any], previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -573,9 +569,7 @@ class LittleLawAnalyzer:
         return results
 
 
-# --------------------------------------------------------------------------
-# Convenience functional wrappers
-# --------------------------------------------------------------------------
+# --- Convenience functional wrappers ---
 
 def analyze_workload(
     data: Dict[str, Any],
